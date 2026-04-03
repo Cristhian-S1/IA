@@ -245,7 +245,6 @@ def leer_puzzle_manual(n):
         puzzle.append(fila)
     return puzzle
 
-
 def menu_principal():
     print()
     print("=" * 65)
