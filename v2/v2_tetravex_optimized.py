@@ -1,5 +1,5 @@
-import time
 import random
+import time
 from collections import defaultdict
 from kanren import var, run, eq, membero, conde, lall
 from kanren.constraints import neq
@@ -8,6 +8,7 @@ IZQ = 0   # Borde izquierdo
 DER = 1   # Borde derecho
 ARR = 2   # Borde arriba
 ABJ = 3   # Borde abajo
+
 def crear_puzzle(puzzle_input):
     n = len(puzzle_input)
     tiles = []
@@ -30,7 +31,7 @@ def construir_indices(tiles):
 
     return { "por_izq": por_izq, "por_der": por_der, "por_arr": por_arr, "por_abj": por_abj }
 
-def match_horizontal(pieza_izq, pieza_der):
+def coincidencia_horizontal(pieza_izq, pieza_der):
     l1, r1, t1, b1 = var(), var(), var(), var()
     l2, r2, t2, b2 = var(), var(), var(), var()
     return lall(
@@ -39,7 +40,7 @@ def match_horizontal(pieza_izq, pieza_der):
         eq(r1, l2)
     )
 
-def match_vertical(pieza_sup, pieza_inf):
+def coincidencia_vertical(pieza_sup, pieza_inf):
     l1, r1, t1, b1 = var(), var(), var(), var()
     l2, r2, t2, b2 = var(), var(), var(), var()
     return lall(
@@ -48,7 +49,7 @@ def match_vertical(pieza_sup, pieza_inf):
         eq(b1, t2)
     )
 
-def solve_tetravex(puzzle_dict):
+def resolver_tetravex(puzzle_dict):
     n = puzzle_dict["n"]
     tiles = puzzle_dict["tiles"]
 
@@ -62,7 +63,7 @@ def solve_tetravex(puzzle_dict):
     result = run(1, flat, goal)
 
     if result:
-        return reshapear(result[0], n)
+        return reconstruir(result[0], n)
     return None
 
 def _colocar_pieza(grid, disponibles, n, r, c, colocadas):
@@ -110,7 +111,7 @@ def _colocar_pieza(grid, disponibles, n, r, c, colocadas):
     # ── conde: miniKanren explorará cada alternativa ──
     return conde(*clausulas)
 
-def reshapear(flat_solution, n):
+def reconstruir(flat_solution, n):
     grid = []
     for r in range(n):
         fila = []
@@ -131,7 +132,7 @@ def imprimir_puzzle(grid, titulo="Puzzle"):
             partes.append(f"({pieza[IZQ]} {pieza[DER]} {pieza[ARR]} {pieza[ABJ]})")
         print("  " + " ".join(partes))
 
-def imprimir_visual(grid, titulo="Puzzle"):
+def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
     if grid is None:
         print(f"\n{titulo}: Sin solucion!")
         return
@@ -191,7 +192,7 @@ def verificar_solucion(grid):
 
     return errores == 0
 
-def generar_puzzle(n, max_val=9):
+def generar_puzzle_aleatorio(n, max_val=9):
     grid = [[None for _ in range(n)] for _ in range(n)]
 
     for r in range(n):
@@ -245,102 +246,81 @@ def leer_puzzle_manual(n):
         puzzle.append(fila)
     return puzzle
 
-def menu_principal():
-    print()
+def benchmark(sizes=None, intentos=3, max_val=9):
+    if sizes is None:
+        sizes = [2, 3, 4]
+    resultados = {}
+
+    print("\n" + "=" * 65)
+    print("  BENCHMARK — Analisis de complejidad temporal")
     print("=" * 65)
-    print("  TETRAVEX SOLVER — miniKanren (Declarativo Optimizado)")
-    print("  Representacion del Conocimiento y Razonamiento")
-    print("  Taller 1 — Universidad de Tarapaca, 1/2026")
-    print("=" * 65)
 
-    ultimos_resultados = None
+    for n in sizes:
+        tiempos = []
+        print(f"\n  Tablero {n}x{n} ({n * n} piezas):")
 
-    while True:
-        print("\n  +-------------------------------------------+")
-        print("  |            MENU PRINCIPAL                  |")
-        print("  +-------------------------------------------+")
-        print("  |  1. Generar y resolver puzzle aleatorio     |")
-        print("  |  2. Ingresar puzzle manualmente             |")
-        print("  |  3. Salir                                   |")
-        print("  +-------------------------------------------+")
-
-        opcion = input("\n  Seleccione una opcion: ").strip()
-
-        # ── 1: Puzzle aleatorio ──
-        if opcion == "1":
-            print("\n  Tamano del tablero:")
-            print("    a) 2x2  (4 piezas)")
-            print("    b) 3x3  (9 piezas)")
-            print("    c) 4x4  (16 piezas)")
-            print("    d) 5x5  (25 piezas)")
-            tam = input("  Seleccione: ").strip().lower()
-
-            mapa_tam = {'a': 2, 'b': 3, 'c': 4, 'd': 5}
-            if tam not in mapa_tam:
-                print("  Opcion no valida.")
-                continue
-
-            n = mapa_tam[tam]
-            print(f"\n  Generando puzzle aleatorio {n}x{n}...")
-            puzzle_input = generar_puzzle(n)
+        for t in range(intentos):
+            puzzle_input = generar_puzzle_aleatorio(n, max_val)
             puzzle_dict = crear_puzzle(puzzle_input)
 
-            imprimir_puzzle(puzzle_input, f"Puzzle generado ({n}x{n})")
-
-            print(f"\n  Resolviendo...")
             inicio = time.time()
-            solucion = solve_tetravex(puzzle_dict)
-            t = time.time() - inicio
+            solucion = resolver_tetravex(puzzle_dict)
+            transcurrido = time.time() - inicio
 
-            if solucion:
-                imprimir_puzzle(solucion, "Solucion")
-                imprimir_visual(solucion, "Solucion (visual)")
-                print(f"\n  Tiempo: {t:.4f} segundos")
-                verificar_solucion(solucion)
-            else:
-                print(f"\n  No se encontro solucion. Tiempo: {t:.4f}s")
+            valida = verificar_solucion(solucion) if solucion else False
+            estado = "OK" if valida else "FAIL"
+            print(f"    Intento {t + 1}: {transcurrido:.4f}s [{estado}]")
+            tiempos.append(transcurrido)
 
-        # ── 2: Puzzle manual ──
-        elif opcion == "2":
-            print("\n  Tamano del tablero:")
-            print("    a) 2x2  (4 piezas)")
-            print("    b) 3x3  (9 piezas)")
-            print("    c) 4x4  (16 piezas)")
-            print("    d) 5x5  (25 piezas)")
-            tam = input("  Seleccione: ").strip().lower()
+        promedio = sum(tiempos) / len(tiempos)
+        resultados[n] = tiempos
+        print(f"    -- Promedio: {promedio:.4f}s")
 
-            mapa_tam = {'a': 2, 'b': 3, 'c': 4, 'd': 5}
-            if tam not in mapa_tam:
-                print("  Opcion no valida.")
-                continue
+    # Tabla resumen
+    print("\n  +----------+---------+----------+----------+")
+    print("  | Tamanio  | Piezas  | Promedio | Maximo   |")
+    print("  +----------+---------+----------+----------+")
+    for n, tiempos in resultados.items():
+        prom = sum(tiempos) / len(tiempos)
+        maxi = max(tiempos)
+        print(f"  |   {n}x{n}    |   {n*n:>2}    | {prom:>6.4f}s | {maxi:>6.4f}s |")
+    print("  +----------+---------+----------+----------+")
 
-            n = mapa_tam[tam]
-            puzzle_input = leer_puzzle_manual(n)
-            puzzle_dict = crear_puzzle(puzzle_input)
+    return resultados
 
-            imprimir_puzzle(puzzle_input, f"Puzzle ingresado ({n}x{n})")
+def graficar_resultados(resultados):
+    try:
+        import matplotlib.pyplot as plt
 
-            print(f"\n  Resolviendo...")
-            inicio = time.time()
-            solucion = solve_tetravex(puzzle_dict)
-            t = time.time() - inicio
+        sizes = list(resultados.keys())
+        promedios = [sum(t) / len(t) for t in resultados.values()]
+        labels = [f"{n}x{n}\n({n*n} pz)" for n in sizes]
 
-            if solucion:
-                imprimir_puzzle(solucion, "Solucion")
-                imprimir_visual(solucion, "Solucion (visual)")
-                print(f"\n  Tiempo: {t:.4f} segundos")
-                verificar_solucion(solucion)
-            else:
-                print(f"\n  No se encontro solucion en {t:.4f}s")
-                print("  Verifique que las piezas sean correctas.")
+        colores = ['#2ecc71', '#3498db', '#e74c3c', '#9b59b6']
 
-        # ── 3: Salir ──
-        elif opcion == "3":
-            print("\n  Hasta luego!\n")
-            break
+        fig, ax = plt.subplots(figsize=(8, 5))
+        barras = ax.bar(labels, promedios, color=colores[:len(sizes)])
 
-        else:
-            print("  Opcion no valida.")
+        for barra, prom in zip(barras, promedios):
+            ax.text(barra.get_x() + barra.get_width() / 2,
+                    barra.get_height() + 0.01,
+                    f'{prom:.4f}s',
+                    ha='center', va='bottom', fontsize=10, fontweight='bold')
 
-if __name__ == "__main__":
-    menu_principal()
+        ax.set_xlabel('Tamano del tablero', fontsize=12)
+        ax.set_ylabel('Tiempo promedio (segundos)', fontsize=12)
+        ax.set_title('TetraVex: Crecimiento del tiempo de resolucion\n'
+                     '(Comportamiento NP-Completo)',
+                     fontsize=13, fontweight='bold')
+        ax.grid(axis='y', alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig('tetravex_benchmark.png', dpi=150)
+        plt.show()
+        print("  Grafico guardado como 'tetravex_benchmark.png'")
+
+    except ImportError:
+        print("  matplotlib no disponible. Datos para graficar:")
+        for n, tiempos in resultados.items():
+            prom = sum(tiempos) / len(tiempos)
+            print(f"    {n}x{n}: {prom:.4f}s")

@@ -1,6 +1,6 @@
 """
 ===============================================================================
-    TETRAVEX SOLVER — Enfoque Declarativo con miniKanren (V1 Optimizado)
+    TETRAVEX SOLVER — Enfoque Declarativo con miniKanren (Solver V1)
     Representación del Conocimiento y Razonamiento — Taller 1
     Universidad de Tarapacá, 1/2026
 ===============================================================================
@@ -43,32 +43,15 @@ REPRESENTACIÓN DE UNA PIEZA (Estructura de datos)
                       izq     der
                          abajo
 
+  Ejemplo: (7, 0, 6, 4) →      6
+                              7   0
+                                4
+
   El puzzle completo se representa como un diccionario:
       {
           "n":     3,                          # dimensión del tablero
           "tiles": [(1,9,2,2), (1,9,4,9), ...] # lista plana de N² piezas
       }
-
-OPTIMIZACIONES REALIZADAS (respecto a la versión base)
-─────────────────────────────────────────────────────
-  1. PRE-INDEXACIÓN: Se crean índices de búsqueda rápida por borde:
-       por_izq[v] = {piezas cuyo borde izquierdo es v}
-       por_arr[v] = {piezas cuyo borde superior es v}
-     Esto reemplaza la búsqueda lineal de membero con todo el dominio
-     por un membero filtrado con solo las piezas compatibles.
-
-  2. PODA DE DOMINIO ANTICIPADA: Al construir los goals, cada celda
-     recibe como dominio solo las piezas que tienen valores de borde
-     compatibles con los bordes ya impuestos por la posición en el
-     tablero (restricciones de adyacencia implícitas por posición).
-
-  3. ORDENAMIENTO DE GOALS: Los goals se intercalan celda por celda
-     (dominio + adyacencia + unicidad) para maximizar la poda temprana.
-
-  4. GOAL RECURSIVO CON PODA (solve_optimizado): Construye el árbol
-     de búsqueda celda por celda, verificando restricciones de adyacencia
-     ANTES de generar las cláusulas de conde. Solo las piezas que pasan
-     la verificación se incluyen como alternativas.
 
 DEPENDENCIAS
 ────────────
@@ -83,16 +66,27 @@ DEPENDENCIAS
 
 import time
 import random
-from collections import defaultdict
 
 # ── miniKanren ──
+# var:     Crea una variable lógica (una incógnita).
+# run:     Ejecuta el motor de búsqueda y devuelve soluciones.
+# eq:      Unificación — fuerza que dos términos sean iguales.
+# membero: Relación de pertenencia — x ∈ lista.
+# conde:   Disyunción (OR) — al menos una de las cláusulas debe cumplirse.
+# lall:    Conjunción (AND) — todas las metas deben cumplirse.
 from kanren import var, run, eq, membero, conde, lall
+
+# neq: Desigualdad — dos términos NO deben ser iguales.
+# Es una restricción (constraint) que se propaga durante la búsqueda.
 from kanren.constraints import neq
 
 
 # =============================================================================
-#  CONSTANTES DE ACCESO A BORDES
+#  CONSTANTES DE ACCESO A LOS BORDES DE UNA PIEZA
 # =============================================================================
+# Cada pieza es una tupla (izquierda, derecha, arriba, abajo).
+# Estas constantes hacen el código más legible:
+#     pieza[IZQ] en lugar de pieza[0]
 
 IZQ = 0   # Borde izquierdo
 DER = 1   # Borde derecho
@@ -106,16 +100,27 @@ ABJ = 3   # Borde inferior (abajo)
 
 def crear_puzzle(puzzle_input):
     """
-    Crea la estructura de datos del puzzle.
+    Crea la estructura de datos del puzzle a partir de la entrada.
 
-    Retorna un diccionario con:
+    La estructura es un diccionario con:
         - "n":     dimensión del tablero (int)
         - "tiles": lista plana de N² piezas (list[tuple])
 
     Parámetros
     ----------
     puzzle_input : list[list[tuple]]
-        Matriz N×N de piezas.
+        Matriz N×N de piezas tal como se presenta al jugador.
+        Ejemplo 3×3:
+        [
+            [(1,9,2,2), (1,9,4,9), (6,8,9,7)],
+            [(9,9,2,9), (0,6,9,5), (0,1,5,4)],
+            [(4,0,7,7), (5,1,4,7), (7,0,6,4)]
+        ]
+
+    Retorna
+    -------
+    dict
+        {"n": 3, "tiles": [(1,9,2,2), (1,9,4,9), ...]}
     """
     n = len(puzzle_input)
     tiles = []
@@ -126,281 +131,199 @@ def crear_puzzle(puzzle_input):
 
 
 # =============================================================================
-#  ÍNDICES DE BÚSQUEDA RÁPIDA (Pre-procesamiento)
-# =============================================================================
-
-def construir_indices(tiles):
-    """
-    Construye índices de búsqueda rápida por valor de borde.
-
-    Esto permite, dado un valor de borde, encontrar inmediatamente
-    todas las piezas que tienen ese valor en un borde específico,
-    sin recorrer toda la lista de piezas.
-
-    Retorna
-    -------
-    dict con 4 índices:
-        "por_izq": {valor: [piezas con borde izquierdo == valor]}
-        "por_der": {valor: [piezas con borde derecho == valor]}
-        "por_arr": {valor: [piezas con borde superior == valor]}
-        "por_abj": {valor: [piezas con borde inferior == valor]}
-
-    Ejemplo:
-        Si tiles = [(7,0,6,4), (0,1,5,4), (1,9,2,2)]
-        por_izq[0] = [(0,1,5,4)]
-        por_izq[1] = [(1,9,2,2)]
-        por_izq[7] = [(7,0,6,4)]
-    """
-    por_izq = defaultdict(list)
-    por_der = defaultdict(list)
-    por_arr = defaultdict(list)
-    por_abj = defaultdict(list)
-
-    for pieza in tiles:
-        por_izq[pieza[IZQ]].append(pieza)
-        por_der[pieza[DER]].append(pieza)
-        por_arr[pieza[ARR]].append(pieza)
-        por_abj[pieza[ABJ]].append(pieza)
-
-    return {
-        "por_izq": por_izq,
-        "por_der": por_der,
-        "por_arr": por_arr,
-        "por_abj": por_abj
-    }
-
-
-# =============================================================================
 #  RELACIONES DE ADYACENCIA (goals de miniKanren)
 # =============================================================================
 
-def match_horizontal(pieza_izq, pieza_der):
+def coincidencia_horizontal(pieza_izq, pieza_der):
     """
-    Goal: derecha(pieza_izq) == izquierda(pieza_der).
+    Meta (goal) de miniKanren:
+        El borde DERECHO de 'pieza_izq' es igual al borde IZQUIERDO de 'pieza_der'.
 
-    Destructura ambas piezas con variables auxiliares y
-    fuerza igualdad entre los bordes adyacentes.
-    """
-    l1, r1, t1, b1 = var(), var(), var(), var()
-    l2, r2, t2, b2 = var(), var(), var(), var()
-    return lall(
-        eq(pieza_izq, (l1, r1, t1, b1)),
-        eq(pieza_der, (l2, r2, t2, b2)),
-        eq(r1, l2)
-    )
+    Funcionamiento paso a paso:
+        1. Se crean 8 variables lógicas auxiliares (4 por pieza).
+        2. eq(pieza_izq, (l1, r1, t1, b1))  →  "destructura" la pieza
+           izquierda, asignando cada componente a una variable auxiliar.
+        3. eq(pieza_der, (l2, r2, t2, b2))  →  destructura la pieza derecha.
+        4. eq(r1, l2)  →  fuerza que derecha(izq) == izquierda(der).
 
-
-def match_vertical(pieza_sup, pieza_inf):
-    """
-    Goal: abajo(pieza_sup) == arriba(pieza_inf).
-
-    Destructura ambas piezas con variables auxiliares y
-    fuerza igualdad entre los bordes adyacentes.
+    Ejemplo:
+        pieza_izq = (7, 0, 6, 4)  →  r1 = 0
+        pieza_der = (0, 1, 5, 4)  →  l2 = 0
+        eq(0, 0) → ÉXITO ✓
     """
     l1, r1, t1, b1 = var(), var(), var(), var()
     l2, r2, t2, b2 = var(), var(), var(), var()
     return lall(
-        eq(pieza_sup, (l1, r1, t1, b1)),
-        eq(pieza_inf, (l2, r2, t2, b2)),
-        eq(b1, t2)
+        eq(pieza_izq, (l1, r1, t1, b1)),   # Destructurar pieza izquierda
+        eq(pieza_der, (l2, r2, t2, b2)),   # Destructurar pieza derecha
+        eq(r1, l2)                          # Restricción R1: der(izq) == izq(der)
+    )
+
+
+def coincidencia_vertical(pieza_sup, pieza_inf):
+    """
+    Meta (goal) de miniKanren:
+        El borde INFERIOR de 'pieza_sup' es igual al borde SUPERIOR de 'pieza_inf'.
+
+    Funcionamiento:
+        Igual que coincidencia_horizontal, pero compara b1 (abajo de la superior)
+        con t2 (arriba de la inferior).
+
+    Ejemplo:
+        pieza_sup = (7, 0, 6, 4)  →  b1 = 4
+        pieza_inf = (5, 1, 4, 7)  →  t2 = 4
+        eq(4, 4) → ÉXITO ✓
+    """
+    l1, r1, t1, b1 = var(), var(), var(), var()
+    l2, r2, t2, b2 = var(), var(), var(), var()
+    return lall(
+        eq(pieza_sup, (l1, r1, t1, b1)),   # Destructurar pieza superior
+        eq(pieza_inf, (l2, r2, t2, b2)),   # Destructurar pieza inferior
+        eq(b1, t2)                          # Restricción R2: abj(sup) == arr(inf)
     )
 
 
 # =============================================================================
-#  SOLVER DECLARATIVO (membero + neq — versión base)
+#  SOLVER V1:  membero + neq + match  (Declarativo puro)
 # =============================================================================
 
-def solve_tetravex_base(puzzle_dict):
+def resolver_tetravex(puzzle_dict):
     """
-    Solver declarativo base: membero + neq + match.
-
-    Declara dominio completo (todas las piezas) para cada celda.
-    Funciona bien hasta 3×3, se vuelve lento en 4×4+.
-
-    Se mantiene como referencia para comparación de tiempos.
-    """
-    n = puzzle_dict["n"]
-    tiles = puzzle_dict["tiles"]
-
-    grid = [[var(f'cell_{r}_{c}') for c in range(n)] for r in range(n)]
-    flat = [grid[r][c] for r in range(n) for c in range(n)]
-
-    goals = []
-
-    for r in range(n):
-        for c in range(n):
-            idx = r * n + c
-
-            # Dominio: esta celda es una de las piezas
-            goals.append(membero(grid[r][c], tiles))
-
-            # Adyacencia
-            if c > 0:
-                goals.append(match_horizontal(grid[r][c - 1], grid[r][c]))
-            if r > 0:
-                goals.append(match_vertical(grid[r - 1][c], grid[r][c]))
-
-            # Unicidad
-            for prev_idx in range(idx):
-                pr, pc = prev_idx // n, prev_idx % n
-                goals.append(neq(grid[pr][pc], grid[r][c]))
-
-    result = run(1, flat, *goals)
-
-    if result:
-        return reshapear(result[0], n)
-    return None
-
-
-# =============================================================================
-#  SOLVER OPTIMIZADO (conde recursivo con poda anticipada)
-# =============================================================================
-
-def solve_tetravex(puzzle_dict):
-    """
-    Solver optimizado: construye el árbol de búsqueda con poda anticipada.
+    Resuelve un puzzle TetraVex usando miniKanren de forma declarativa.
 
     ┌──────────────────────────────────────────────────────────────────┐
-    │  DIFERENCIA CLAVE respecto a la versión base:                    │
-    │                                                                  │
-    │  En la versión base, membero ofrece TODAS las piezas como        │
-    │  candidatas para cada celda, y miniKanren descarta las inválidas │
-    │  después (cuando evalúa match y neq).                            │
-    │                                                                  │
-    │  En esta versión, la función _colocar_pieza verifica las         │
-    │  restricciones de adyacencia ANTES de incluir una pieza como     │
-    │  cláusula del conde.  Solo las piezas que pasan la verificación  │
-    │  se presentan a miniKanren como alternativas.                    │
-    │                                                                  │
-    │  Además, las piezas usadas se remueven de las disponibles        │
-    │  (unicidad implícita, sin necesidad de neq).                     │
+    │  Idea central:                                                   │
+    │  Declarar las tres familias de restricciones del CSP como metas  │
+    │  independientes de miniKanren, y dejar que el motor de búsqueda  │
+    │  encuentre una asignación que las satisfaga simultáneamente.      │
     └──────────────────────────────────────────────────────────────────┘
 
-    Usa exclusivamente primitivas de miniKanren: var, run, eq, conde, lall.
-    No implementa ningún algoritmo de búsqueda propio — miniKanren
-    sigue siendo el motor que explora las alternativas del conde.
+    Paso 1 — Variables lógicas:
+        Se crea una variable lógica por cada celda del tablero.
+        celda[r][c] = var("cell_r_c")
+
+    Paso 2 — Dominio (membero):
+        Para cada celda, se declara que su valor pertenece al conjunto
+        de piezas disponibles:
+            membero(celda[r][c], lista_de_piezas)
+        Internamente, membero genera un punto de elección (conde) con
+        una alternativa por cada pieza de la lista.
+
+    Paso 3 — Adyacencia (coincidencia_horizontal / coincidencia_vertical):
+        Se declaran las restricciones de bordes entre celdas vecinas.
+        Se colocan INMEDIATAMENTE después del membero de la celda
+        correspondiente para que miniKanren pode ramas inválidas
+        lo antes posible.
+
+    Paso 4 — Unicidad (neq):
+        Se declara que cada par de celdas debe tener piezas distintas:
+            neq(celda[i], celda[j])  para todo i ≠ j
+        neq es una restricción de desigualdad que miniKanren verifica
+        incrementalmente durante la búsqueda.
+
+    Paso 5 — Ejecución (run):
+        run(1, variables, *metas)  →  busca 1 solución que satisfaga
+        todas las metas simultáneamente.
 
     Parámetros
     ----------
     puzzle_dict : dict
+        Estructura creada por crear_puzzle():
         {"n": int, "tiles": list[tuple]}
 
     Retorna
     -------
     list[list[tuple]] o None
+        Tablero resuelto como grilla N×N, o None si no hay solución.
     """
     n = puzzle_dict["n"]
     tiles = puzzle_dict["tiles"]
 
-    # Crear variables lógicas para cada celda
+    # ── Paso 1: Crear variables lógicas ──
+    # Cada celda del tablero es una incógnita que miniKanren debe resolver.
+    # grid[r][c] es la variable para la fila r, columna c.
     grid = [[var(f'cell_{r}_{c}') for c in range(n)] for r in range(n)]
+
+    # Lista plana de variables para pasarla a run() como consulta
     flat = [grid[r][c] for r in range(n) for c in range(n)]
 
-    # Construir el goal recursivo que asigna pieza por pieza
-    goal = _colocar_pieza(grid, tuple(tiles), n, 0, 0, {})
+    # ── Pasos 2, 3 y 4: Construir lista de metas (goals) ──
+    #
+    # IMPORTANTE — Estrategia de ordenamiento:
+    #   Para cada celda (recorriendo fila por fila, izquierda a derecha):
+    #     a) Declarar dominio (membero)
+    #     b) Declarar adyacencia con vecinos ya procesados (match)
+    #     c) Declarar unicidad con todas las celdas anteriores (neq)
+    #
+    #   Este orden intercalado permite a miniKanren detectar
+    #   inconsistencias tempranamente y podar el árbol de búsqueda.
+    #   Si pusiéramos todos los membero primero, luego todos los neq,
+    #   y luego todos los match, miniKanren generaría muchas más
+    #   combinaciones antes de descartarlas.
 
-    # Ejecutar miniKanren
-    result = run(1, flat, goal)
+    goals = []
 
+    for r in range(n):
+        for c in range(n):
+            idx = r * n + c  # Índice lineal de esta celda
+
+            # ─── (a) DOMINIO ───
+            # membero(celda, piezas) equivale internamente a:
+            #   conde(
+            #       [eq(celda, pieza_0)],
+            #       [eq(celda, pieza_1)],
+            #       ...
+            #       [eq(celda, pieza_{N²-1})]
+            #   )
+            # Esto le dice a miniKanren: "esta celda puede ser
+            # cualquiera de las piezas disponibles".
+            goals.append(membero(grid[r][c], tiles))
+
+            # ─── (b) ADYACENCIA ───
+            # Se añaden justo después del membero para que miniKanren
+            # pueda verificar la restricción inmediatamente al elegir
+            # un valor para esta celda.
+
+            # Horizontal: derecha del vecino izquierdo == izquierda actual
+            if c > 0:
+                goals.append(coincidencia_horizontal(grid[r][c - 1], grid[r][c]))
+
+            # Vertical: abajo del vecino superior == arriba actual
+            if r > 0:
+                goals.append(coincidencia_vertical(grid[r - 1][c], grid[r][c]))
+
+            # ─── (c) UNICIDAD ───
+            # neq(a, b) agrega una restricción de desigualdad que se
+            # mantiene activa durante la búsqueda. Cuando ambas variables
+            # obtienen valores concretos, miniKanren verifica que difieran.
+            for prev_idx in range(idx):
+                pr, pc = prev_idx // n, prev_idx % n
+                goals.append(neq(grid[pr][pc], grid[r][c]))
+
+    # ── Paso 5: Ejecutar el solver de miniKanren ──
+    # run(1, flat, *goals):
+    #   - 1:     buscar exactamente 1 solución
+    #   - flat:  variables cuyo valor queremos conocer
+    #   - goals: todas las metas que deben satisfacerse
+    #
+    # miniKanren explora el espacio con interleaving search,
+    # probando valores de membero y verificando neq + match.
+    result = run(1, flat, *goals)
+
+    # ── Reconstruir la grilla N×N ──
     if result:
-        return reshapear(result[0], n)
+        solution = result[0]
+        return reconstruir(solution, n)
+
     return None
-
-
-def _colocar_pieza(grid, disponibles, n, r, c, colocadas):
-    """
-    Goal recursivo: asigna una pieza a la posición (r, c) y continúa.
-
-    ┌──────────────────────────────────────────────────────────────────┐
-    │  Proceso para cada posición (r, c):                              │
-    │                                                                  │
-    │  1. FILTRAR: Para cada pieza en 'disponibles', verificar si      │
-    │     cumple las restricciones de adyacencia con las piezas ya     │
-    │     colocadas (vecino izquierdo y vecino superior).              │
-    │                                                                  │
-    │  2. CONSTRUIR CONDE: Solo las piezas que pasan el filtro se     │
-    │     incluyen como cláusulas del conde.  Cada cláusula contiene: │
-    │       eq(grid[r][c], pieza)  →  asignar la pieza a la celda     │
-    │       _colocar_pieza(...)    →  recurrir a la siguiente celda   │
-    │                                                                  │
-    │  3. La pieza asignada se remueve de 'disponibles' antes de      │
-    │     recurrir, lo que GARANTIZA UNICIDAD sin necesidad de neq.   │
-    │                                                                  │
-    │  4. Si ninguna pieza pasa el filtro → goal que falla.           │
-    │     miniKanren retrocede (backtrack) al conde anterior.         │
-    └──────────────────────────────────────────────────────────────────┘
-
-    Parámetros
-    ----------
-    grid : list[list[var]]
-        Matriz de variables lógicas.
-    disponibles : tuple[tuple]
-        Piezas aún no colocadas.
-    n : int
-        Dimensión del tablero.
-    r, c : int
-        Posición actual a llenar.
-    colocadas : dict
-        {(r, c): pieza} con las piezas ya asignadas.
-        Se usa para verificar adyacencia.
-
-    Retorna
-    -------
-    goal de miniKanren (conde, lall, o fail).
-    """
-    # ── Caso base: todas las celdas llenadas exitosamente ──
-    if r >= n:
-        return lall()  # Éxito: no hay más condiciones
-
-    # Calcular siguiente posición (recorrido fila por fila)
-    sig_r, sig_c = (r, c + 1) if c + 1 < n else (r + 1, 0)
-
-    # ── Filtrar piezas candidatas ──
-    clausulas = []
-
-    for i in range(len(disponibles)):
-        pieza = disponibles[i]
-
-        # Verificar restricción HORIZONTAL:
-        # Si hay vecino a la izquierda, su borde derecho debe
-        # coincidir con el borde izquierdo de esta pieza.
-        if c > 0:
-            vecino_izq = colocadas[(r, c - 1)]
-            if vecino_izq[DER] != pieza[IZQ]:
-                continue  # Poda: pieza incompatible → no incluir
-
-        # Verificar restricción VERTICAL:
-        # Si hay vecino arriba, su borde inferior debe coincidir
-        # con el borde superior de esta pieza.
-        if r > 0:
-            vecino_sup = colocadas[(r - 1, c)]
-            if vecino_sup[ABJ] != pieza[ARR]:
-                continue  # Poda: pieza incompatible → no incluir
-
-        # ── Pieza válida: construir cláusula para conde ──
-        nuevas_disponibles = disponibles[:i] + disponibles[i+1:]
-        nuevas_colocadas = dict(colocadas)
-        nuevas_colocadas[(r, c)] = pieza
-
-        clausulas.append([
-            eq(grid[r][c], pieza),                                              # Unificar celda con pieza
-            _colocar_pieza(grid, nuevas_disponibles, n, sig_r, sig_c, nuevas_colocadas)  # Recurrir
-        ])
-
-    # ── Si no hay candidatas válidas → goal que falla ──
-    if not clausulas:
-        return lambda s: iter([])  # Fail: miniKanren hace backtrack
-
-    # ── conde: miniKanren explorará cada alternativa ──
-    return conde(*clausulas)
 
 
 # =============================================================================
 #  UTILIDADES
 # =============================================================================
 
-def reshapear(flat_solution, n):
-    """Convierte una solución plana en grilla N×N."""
+def reconstruir(flat_solution, n):
+    """Convierte una solución plana (tupla de N² piezas) en grilla N×N."""
     grid = []
     for r in range(n):
         fila = []
@@ -412,7 +335,7 @@ def reshapear(flat_solution, n):
 
 def imprimir_puzzle(grid, titulo="Puzzle"):
     """
-    Imprime el tablero en formato compacto.
+    Imprime el tablero en formato compacto de tuplas.
 
     Ejemplo 3×3:
       (7 0 6 4) (0 1 5 4) (1 9 2 2)
@@ -431,7 +354,7 @@ def imprimir_puzzle(grid, titulo="Puzzle"):
         print("  " + " ".join(partes))
 
 
-def imprimir_visual(grid, titulo="Puzzle"):
+def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
     """
     Imprime el tablero con piezas en formato diamante visual.
 
@@ -448,6 +371,7 @@ def imprimir_visual(grid, titulo="Puzzle"):
     n = len(grid)
 
     for r in range(n):
+        # Línea superior: borde de arriba de cada pieza
         linea_top = ""
         for c in range(n):
             linea_top += f"   {grid[r][c][ARR]}   "
@@ -455,6 +379,7 @@ def imprimir_visual(grid, titulo="Puzzle"):
                 linea_top += "|"
         print("  " + linea_top)
 
+        # Línea media: borde izquierdo y derecho
         linea_mid = ""
         for c in range(n):
             linea_mid += f" {grid[r][c][IZQ]}   {grid[r][c][DER]} "
@@ -462,6 +387,7 @@ def imprimir_visual(grid, titulo="Puzzle"):
                 linea_mid += "|"
         print("  " + linea_mid)
 
+        # Línea inferior: borde de abajo
         linea_bot = ""
         for c in range(n):
             linea_bot += f"   {grid[r][c][ABJ]}   "
@@ -469,6 +395,7 @@ def imprimir_visual(grid, titulo="Puzzle"):
                 linea_bot += "|"
         print("  " + linea_bot)
 
+        # Separador entre filas
         if r < n - 1:
             print("  " + ("-------+" * (n - 1)) + "-------")
 
@@ -480,6 +407,11 @@ def verificar_solucion(grid):
     Comprueba:
       (R1) Horizontal: pieza[r][c][DER] == pieza[r][c+1][IZQ]
       (R2) Vertical:   pieza[r][c][ABJ] == pieza[r+1][c][ARR]
+
+    Retorna
+    -------
+    bool
+        True si todas las restricciones se cumplen.
     """
     if grid is None:
         return False
@@ -489,11 +421,14 @@ def verificar_solucion(grid):
 
     for r in range(n):
         for c in range(n):
+            # R1: Horizontal
             if c + 1 < n:
                 if grid[r][c][DER] != grid[r][c + 1][IZQ]:
                     print(f"  X Horizontal ({r},{c})->({r},{c+1}): "
                           f"{grid[r][c][DER]} != {grid[r][c+1][IZQ]}")
                     errores += 1
+
+            # R2: Vertical
             if r + 1 < n:
                 if grid[r][c][ABJ] != grid[r + 1][c][ARR]:
                     print(f"  X Vertical ({r},{c})->({r+1},{c}): "
@@ -508,12 +443,27 @@ def verificar_solucion(grid):
     return errores == 0
 
 
-def generar_puzzle(n, max_val=9):
+def generar_puzzle_aleatorio(n, max_val=9):
     """
     Genera un puzzle TetraVex aleatorio y resoluble de tamaño N×N.
 
-    Construye un tablero resuelto forzando coincidencia en bordes
-    adyacentes, luego mezcla las piezas.
+    Estrategia:
+      1. Construir un tablero resuelto: asignar bordes aleatorios,
+         forzando coincidencia en bordes adyacentes.
+      2. Extraer las piezas y mezclarlas aleatoriamente.
+      3. Retornar como lista de listas (formato de entrada estándar).
+
+    Parámetros
+    ----------
+    n : int
+        Dimensión del tablero.
+    max_val : int
+        Valor máximo para los bordes (rango 0 a max_val).
+
+    Retorna
+    -------
+    list[list[tuple]]
+        Puzzle mezclado en formato de entrada.
     """
     grid = [[None for _ in range(n)] for _ in range(n)]
 
@@ -524,16 +474,21 @@ def generar_puzzle(n, max_val=9):
             arriba = random.randint(0, max_val)
             abajo  = random.randint(0, max_val)
 
+            # Forzar coincidencia con vecino izquierdo
             if c > 0:
                 izq = grid[r][c - 1][DER]
+
+            # Forzar coincidencia con vecino superior
             if r > 0:
                 arriba = grid[r - 1][c][ABJ]
 
             grid[r][c] = (izq, der, arriba, abajo)
 
+    # Mezclar piezas aleatoriamente
     piezas = [grid[r][c] for r in range(n) for c in range(n)]
     random.shuffle(piezas)
 
+    # Reestructurar como lista de listas
     puzzle = []
     for r in range(n):
         fila = []
@@ -546,8 +501,10 @@ def generar_puzzle(n, max_val=9):
 
 def leer_puzzle_manual(n):
     """
-    Lee un puzzle N×N ingresado manualmente.
-    Formato por pieza: izquierda derecha arriba abajo
+    Lee un puzzle N×N ingresado manualmente por el usuario.
+
+    Formato por pieza: cuatro enteros separados por espacio.
+    Orden: izquierda derecha arriba abajo
     """
     print(f"\nIngrese las {n * n} piezas del puzzle {n}x{n}.")
     print("Formato por pieza: izquierda derecha arriba abajo")
@@ -581,17 +538,29 @@ def leer_puzzle_manual(n):
 #  BENCHMARKING — Análisis de Complejidad (NP-Completitud)
 # =============================================================================
 
-def benchmark(sizes=None, intentos=3, max_val=9, comparar=False):
+def benchmark(sizes=None, intentos=3, max_val=9):
     """
-    Ejecuta pruebas de rendimiento.
+    Ejecuta pruebas de rendimiento para analizar el crecimiento temporal.
 
-    Si comparar=True, ejecuta tanto el solver base como el optimizado
-    para mostrar la diferencia de rendimiento.
+    TetraVex es NP-Completo (Demaine & Demaine, 2007):
+    - No se conoce algoritmo que lo resuelva en tiempo polinomial.
+    - El tiempo crece exponencialmente con el tamaño del tablero.
+    - Se puede verificar una solución en tiempo polinomial (clase NP).
+    - Se reduce desde problemas NP-Completos conocidos.
+
+    Parámetros
+    ----------
+    sizes : list[int]
+        Tamaños de tablero a probar.
+    intentos : int
+        Número de puzzles aleatorios por tamaño (se reporta promedio).
+    max_val : int
+        Rango de valores en las piezas.
 
     Retorna
     -------
-    dict[int, dict]
-        {tamaño: {"optimizado": [tiempos], "base": [tiempos]}}
+    dict[int, list[float]]
+        {tamaño: [tiempo_1, tiempo_2, ...]}
     """
     if sizes is None:
         sizes = [2, 3, 4]
@@ -600,67 +569,38 @@ def benchmark(sizes=None, intentos=3, max_val=9, comparar=False):
 
     print("\n" + "=" * 65)
     print("  BENCHMARK — Analisis de complejidad temporal")
-    if comparar:
-        print("  Comparacion: Solver base vs Solver optimizado")
     print("=" * 65)
 
     for n in sizes:
-        tiempos_opt = []
-        tiempos_base = []
+        tiempos = []
         print(f"\n  Tablero {n}x{n} ({n * n} piezas):")
 
         for t in range(intentos):
-            puzzle_input = generar_puzzle(n, max_val)
+            puzzle_input = generar_puzzle_aleatorio(n, max_val)
             puzzle_dict = crear_puzzle(puzzle_input)
 
-            # Solver optimizado
             inicio = time.time()
-            sol_opt = solve_tetravex(puzzle_dict)
-            t_opt = time.time() - inicio
-            valida_opt = verificar_solucion(sol_opt) if sol_opt else False
+            solucion = resolver_tetravex(puzzle_dict)
+            transcurrido = time.time() - inicio
 
-            if comparar and n <= 4:
-                # Solver base (solo hasta 4×4, más allá es demasiado lento)
-                inicio = time.time()
-                sol_base = solve_tetravex_base(puzzle_dict)
-                t_base = time.time() - inicio
-                valida_base = verificar_solucion(sol_base) if sol_base else False
-                tiempos_base.append(t_base)
+            valida = verificar_solucion(solucion) if solucion else False
+            estado = "OK" if valida else "FAIL"
+            print(f"    Intento {t + 1}: {transcurrido:.4f}s [{estado}]")
+            tiempos.append(transcurrido)
 
-                print(f"    Intento {t + 1}: "
-                      f"Opt={t_opt:.4f}s [{'OK' if valida_opt else 'FAIL'}]  "
-                      f"Base={t_base:.4f}s [{'OK' if valida_base else 'FAIL'}]  "
-                      f"Speedup={t_base/t_opt:.1f}x" if t_opt > 0.0001 else
-                      f"    Intento {t + 1}: "
-                      f"Opt={t_opt:.4f}s  Base={t_base:.4f}s")
-            else:
-                estado = "OK" if valida_opt else "FAIL"
-                print(f"    Intento {t + 1}: {t_opt:.4f}s [{estado}]")
-
-            tiempos_opt.append(t_opt)
-
-        prom_opt = sum(tiempos_opt) / len(tiempos_opt)
-        print(f"    -- Promedio optimizado: {prom_opt:.4f}s")
-
-        if comparar and tiempos_base:
-            prom_base = sum(tiempos_base) / len(tiempos_base)
-            print(f"    -- Promedio base:       {prom_base:.4f}s")
-            if prom_opt > 0.0001:
-                print(f"    -- Speedup promedio:    {prom_base/prom_opt:.1f}x")
-
-        resultados[n] = {
-            "optimizado": tiempos_opt,
-            "base": tiempos_base
-        }
+        promedio = sum(tiempos) / len(tiempos)
+        resultados[n] = tiempos
+        print(f"    -- Promedio: {promedio:.4f}s")
 
     # Tabla resumen
-    print("\n  +----------+---------+------------+")
-    print("  | Tamanio  | Piezas  | Prom. Opt  |")
-    print("  +----------+---------+------------+")
-    for n, data in resultados.items():
-        prom = sum(data["optimizado"]) / len(data["optimizado"])
-        print(f"  |   {n}x{n}    |   {n*n:>2}    |  {prom:>7.4f}s  |")
-    print("  +----------+---------+------------+")
+    print("\n  +----------+---------+----------+----------+")
+    print("  | Tamanio  | Piezas  | Promedio | Maximo   |")
+    print("  +----------+---------+----------+----------+")
+    for n, tiempos in resultados.items():
+        prom = sum(tiempos) / len(tiempos)
+        maxi = max(tiempos)
+        print(f"  |   {n}x{n}    |   {n*n:>2}    | {prom:>6.4f}s | {maxi:>6.4f}s |")
+    print("  +----------+---------+----------+----------+")
 
     return resultados
 
@@ -668,17 +608,16 @@ def benchmark(sizes=None, intentos=3, max_val=9, comparar=False):
 def graficar_resultados(resultados):
     """
     Genera un gráfico de barras con los tiempos de benchmark.
-    Requiere matplotlib.
+    Requiere matplotlib (pip install matplotlib).
     """
     try:
         import matplotlib.pyplot as plt
 
         sizes = list(resultados.keys())
-        promedios = [sum(d["optimizado"]) / len(d["optimizado"])
-                     for d in resultados.values()]
+        promedios = [sum(t) / len(t) for t in resultados.values()]
         labels = [f"{n}x{n}\n({n*n} pz)" for n in sizes]
 
-        colores = ['#2ecc71', '#3498db', '#e74c3c', '#9b59b6', '#f39c12']
+        colores = ['#2ecc71', '#3498db', '#e74c3c', '#9b59b6']
 
         fig, ax = plt.subplots(figsize=(8, 5))
         barras = ax.bar(labels, promedios, color=colores[:len(sizes)])
@@ -691,8 +630,8 @@ def graficar_resultados(resultados):
 
         ax.set_xlabel('Tamano del tablero', fontsize=12)
         ax.set_ylabel('Tiempo promedio (segundos)', fontsize=12)
-        ax.set_title('TetraVex: Crecimiento del tiempo (NP-Completo)\n'
-                     'Solver optimizado con poda anticipada',
+        ax.set_title('TetraVex: Crecimiento del tiempo de resolucion\n'
+                     '(Comportamiento NP-Completo)',
                      fontsize=13, fontweight='bold')
         ax.grid(axis='y', alpha=0.3)
 
@@ -703,8 +642,8 @@ def graficar_resultados(resultados):
 
     except ImportError:
         print("  matplotlib no disponible. Datos para graficar:")
-        for n, data in resultados.items():
-            prom = sum(data["optimizado"]) / len(data["optimizado"])
+        for n, tiempos in resultados.items():
+            prom = sum(tiempos) / len(tiempos)
             print(f"    {n}x{n}: {prom:.4f}s")
 
 
@@ -717,11 +656,12 @@ def menu_principal():
 
     print()
     print("=" * 65)
-    print("  TETRAVEX SOLVER — miniKanren (Declarativo Optimizado)")
+    print("  TETRAVEX SOLVER — miniKanren (Enfoque Declarativo V1)")
     print("  Representacion del Conocimiento y Razonamiento")
     print("  Taller 1 — Universidad de Tarapaca, 1/2026")
     print("=" * 65)
 
+    # Variable para almacenar resultados del benchmark
     ultimos_resultados = None
 
     while True:
@@ -731,10 +671,9 @@ def menu_principal():
         print("  |  1. Resolver ejemplo del PDF (3x3)         |")
         print("  |  2. Generar y resolver puzzle aleatorio     |")
         print("  |  3. Ingresar puzzle manualmente             |")
-        print("  |  4. Benchmark (solo optimizado)             |")
-        print("  |  5. Benchmark comparativo (base vs opt)     |")
-        print("  |  6. Graficar resultados de benchmark        |")
-        print("  |  7. Salir                                   |")
+        print("  |  4. Benchmark (analisis NP-Completo)        |")
+        print("  |  5. Graficar resultados de benchmark        |")
+        print("  |  6. Salir                                   |")
         print("  +-------------------------------------------+")
 
         opcion = input("\n  Seleccione una opcion: ").strip()
@@ -751,20 +690,21 @@ def menu_principal():
             print(f"\n  Puzzle: {puzzle_dict['n']}x{puzzle_dict['n']} "
                   f"con {len(puzzle_dict['tiles'])} piezas")
             imprimir_puzzle(
-                reshapear(puzzle_dict["tiles"], puzzle_dict["n"]),
+                reconstruir(puzzle_dict["tiles"], puzzle_dict["n"]),
                 "Piezas de entrada"
             )
 
-            print("\n  Resolviendo con miniKanren (optimizado)...")
+            print("\n  Resolviendo con miniKanren (membero + neq + match)...")
             inicio = time.time()
-            solucion = solve_tetravex(puzzle_dict)
+            solucion = resolver_tetravex(puzzle_dict)
             t = time.time() - inicio
 
             imprimir_puzzle(solucion, "Solucion encontrada")
-            imprimir_visual(solucion, "Solucion (vista visual)")
-            print(f"\n  Tiempo: {t:.4f} segundos")
+            imprimir_puzzle_diamante(solucion, "Solucion (vista visual)")
+            print(f"\n  Tiempo de resolucion: {t:.4f} segundos")
             verificar_solucion(solucion)
 
+            # Comparar con la solución esperada del PDF
             esperada = [
                 [(7, 0, 6, 4), (0, 1, 5, 4), (1, 9, 2, 2)],
                 [(5, 1, 4, 7), (1, 9, 4, 9), (9, 9, 2, 9)],
@@ -773,7 +713,8 @@ def menu_principal():
             if solucion == esperada:
                 print("  Coincide exactamente con la solucion del PDF.")
             elif solucion is not None:
-                print("  Solucion valida (puede diferir si hay multiples soluciones).")
+                print("  Solucion valida (puede diferir del PDF si hay")
+                print("  multiples soluciones validas).")
 
         # ── 2: Puzzle aleatorio ──
         elif opcion == "2":
@@ -791,19 +732,19 @@ def menu_principal():
 
             n = mapa_tam[tam]
             print(f"\n  Generando puzzle aleatorio {n}x{n}...")
-            puzzle_input = generar_puzzle(n)
+            puzzle_input = generar_puzzle_aleatorio(n)
             puzzle_dict = crear_puzzle(puzzle_input)
 
             imprimir_puzzle(puzzle_input, f"Puzzle generado ({n}x{n})")
 
-            print(f"\n  Resolviendo...")
+            print(f"\n  Resolviendo con miniKanren...")
             inicio = time.time()
-            solucion = solve_tetravex(puzzle_dict)
+            solucion = resolver_tetravex(puzzle_dict)
             t = time.time() - inicio
 
             if solucion:
                 imprimir_puzzle(solucion, "Solucion")
-                imprimir_visual(solucion, "Solucion (visual)")
+                imprimir_puzzle_diamante(solucion, "Solucion (visual)")
                 print(f"\n  Tiempo: {t:.4f} segundos")
                 verificar_solucion(solucion)
             else:
@@ -829,69 +770,54 @@ def menu_principal():
 
             imprimir_puzzle(puzzle_input, f"Puzzle ingresado ({n}x{n})")
 
-            print(f"\n  Resolviendo...")
+            print(f"\n  Resolviendo con miniKanren...")
             inicio = time.time()
-            solucion = solve_tetravex(puzzle_dict)
+            solucion = resolver_tetravex(puzzle_dict)
             t = time.time() - inicio
 
             if solucion:
                 imprimir_puzzle(solucion, "Solucion")
-                imprimir_visual(solucion, "Solucion (visual)")
+                imprimir_puzzle_diamante(solucion, "Solucion (visual)")
                 print(f"\n  Tiempo: {t:.4f} segundos")
                 verificar_solucion(solucion)
             else:
                 print(f"\n  No se encontro solucion en {t:.4f}s")
                 print("  Verifique que las piezas sean correctas.")
 
-        # ── 4: Benchmark solo optimizado ──
+        # ── 4: Benchmark ──
         elif opcion == "4":
             print("\n  Tamanos a probar:")
             print("    a) 2x2, 3x3")
             print("    b) 2x2, 3x3, 4x4")
-            print("    c) 2x2, 3x3, 4x4, 5x5")
+            print("    c) 2x2, 3x3, 4x4, 5x5  (puede ser lento)")
             sel = input("  Seleccione: ").strip().lower()
 
-            mapa = {'a': [2, 3], 'b': [2, 3, 4], 'c': [2, 3, 4, 5]}
+            mapa = {
+                'a': [2, 3],
+                'b': [2, 3, 4],
+                'c': [2, 3, 4, 5]
+            }
             sizes = mapa.get(sel, [2, 3, 4])
 
-            inp = input("  Intentos por tamano (default 3): ").strip()
+            inp = input("  Numero de intentos por tamano (default 3): ").strip()
             intentos = int(inp) if inp.isdigit() else 3
 
             ultimos_resultados = benchmark(sizes=sizes, intentos=intentos)
 
-        # ── 5: Benchmark comparativo ──
+        # ── 5: Graficar ──
         elif opcion == "5":
-            print("\n  Comparacion base vs optimizado")
-            print("  (base solo hasta 4x4, es muy lento en 5x5)\n")
-            print("  Tamanos:")
-            print("    a) 2x2, 3x3")
-            print("    b) 2x2, 3x3, 4x4")
-            sel = input("  Seleccione: ").strip().lower()
-
-            mapa = {'a': [2, 3], 'b': [2, 3, 4]}
-            sizes = mapa.get(sel, [2, 3])
-
-            inp = input("  Intentos por tamano (default 3): ").strip()
-            intentos = int(inp) if inp.isdigit() else 3
-
-            ultimos_resultados = benchmark(
-                sizes=sizes, intentos=intentos, comparar=True
-            )
-
-        # ── 6: Graficar ──
-        elif opcion == "6":
             if ultimos_resultados:
                 graficar_resultados(ultimos_resultados)
             else:
-                print("  Primero ejecute un benchmark (opcion 4 o 5).")
+                print("  Primero ejecute un benchmark (opcion 4).")
 
-        # ── 7: Salir ──
-        elif opcion == "7":
+        # ── 6: Salir ──
+        elif opcion == "6":
             print("\n  Hasta luego!\n")
             break
 
         else:
-            print("  Opcion no valida.")
+            print("  Opcion no valida. Intente de nuevo.")
 
 
 # =============================================================================
