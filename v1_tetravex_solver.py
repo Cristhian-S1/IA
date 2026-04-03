@@ -25,7 +25,6 @@ def match_horizontal(pieza_izq, pieza_der):
         eq(r1, l2)                          # Restricción R1: der(izq) == izq(der)
     )
 
-
 def match_vertical(pieza_sup, pieza_inf):
     l1, r1, t1, b1 = var(), var(), var(), var()
     l2, r2, t2, b2 = var(), var(), var(), var()
@@ -69,13 +68,7 @@ def solve_tetravex(puzzle_dict):
 
     return None
 
-
-# =============================================================================
-#  UTILIDADES
-# =============================================================================
-
 def reshapear(flat_solution, n):
-    """Convierte una solución plana (tupla de N² piezas) en grilla N×N."""
     grid = []
     for r in range(n):
         fila = []
@@ -84,11 +77,7 @@ def reshapear(flat_solution, n):
         grid.append(fila)
     return grid
 
-
 def imprimir_puzzle(grid, titulo="Puzzle"):
-    """
-    Imprime el tablero en formato compacto de tuplas.
-    """
     if grid is None:
         print(f"\n{titulo}: Sin solucion!")
         return
@@ -100,11 +89,7 @@ def imprimir_puzzle(grid, titulo="Puzzle"):
             partes.append(f"({pieza[IZQ]} {pieza[DER]} {pieza[ARR]} {pieza[ABJ]})")
         print("  " + " ".join(partes))
 
-
 def imprimir_visual(grid, titulo="Puzzle"):
-    """
-    Imprime el tablero con piezas en formato diamante visual.
-    """
     if grid is None:
         print(f"\n{titulo}: Sin solucion!")
         return
@@ -141,7 +126,6 @@ def imprimir_visual(grid, titulo="Puzzle"):
         if r < n - 1:
             print("  " + ("-------+" * (n - 1)) + "-------")
 
-
 def verificar_solucion(grid):
     if grid is None:
         return False
@@ -172,11 +156,7 @@ def verificar_solucion(grid):
 
     return errores == 0
 
-
 def generar_puzzle(n, max_val=9):
-    """
-    Genera un puzzle TetraVex aleatorio y resoluble de tamaño N×N.
-    """
     grid = [[None for _ in range(n)] for _ in range(n)]
 
     for r in range(n):
@@ -210,12 +190,7 @@ def generar_puzzle(n, max_val=9):
 
     return puzzle
 
-
 def leer_puzzle_manual(n):
-    """
-    Lee un puzzle N×N ingresado manualmente por el usuario.
-    Formato por pieza: cuatro enteros separados por espacio.
-    """
     print(f"\nIngrese las {n * n} piezas del puzzle {n}x{n}.")
     print("Formato por pieza: izquierda derecha arriba abajo")
     print("Ejemplo: 7 0 6 4\n")
@@ -244,123 +219,6 @@ def leer_puzzle_manual(n):
     return puzzle
 
 
-# =============================================================================
-#  BENCHMARKING — Análisis de Complejidad (NP-Completitud)
-# =============================================================================
-
-def benchmark(sizes=None, intentos=3, max_val=9):
-    """
-    Ejecuta pruebas de rendimiento para analizar el crecimiento temporal.
-
-    TetraVex es NP-Completo (Demaine & Demaine, 2007):
-    - No se conoce algoritmo que lo resuelva en tiempo polinomial.
-    - El tiempo crece exponencialmente con el tamaño del tablero.
-    - Se puede verificar una solución en tiempo polinomial (clase NP).
-    - Se reduce desde problemas NP-Completos conocidos.
-
-    Parámetros
-    ----------
-    sizes : list[int]
-        Tamaños de tablero a probar.
-    intentos : int
-        Número de puzzles aleatorios por tamaño (se reporta promedio).
-    max_val : int
-        Rango de valores en las piezas.
-
-    Retorna
-    -------
-    dict[int, list[float]]
-        {tamaño: [tiempo_1, tiempo_2, ...]}
-    """
-    if sizes is None:
-        sizes = [2, 3, 4]
-
-    resultados = {}
-
-    print("\n" + "=" * 65)
-    print("  BENCHMARK — Analisis de complejidad temporal")
-    print("=" * 65)
-
-    for n in sizes:
-        tiempos = []
-        print(f"\n  Tablero {n}x{n} ({n * n} piezas):")
-
-        for t in range(intentos):
-            puzzle_input = generar_puzzle(n, max_val)
-            puzzle_dict = crear_puzzle(puzzle_input)
-
-            inicio = time.time()
-            solucion = solve_tetravex(puzzle_dict)
-            transcurrido = time.time() - inicio
-
-            valida = verificar_solucion(solucion) if solucion else False
-            estado = "OK" if valida else "FAIL"
-            print(f"    Intento {t + 1}: {transcurrido:.4f}s [{estado}]")
-            tiempos.append(transcurrido)
-
-        promedio = sum(tiempos) / len(tiempos)
-        resultados[n] = tiempos
-        print(f"    -- Promedio: {promedio:.4f}s")
-
-    # Tabla resumen
-    print("\n  +----------+---------+----------+----------+")
-    print("  | Tamanio  | Piezas  | Promedio | Maximo   |")
-    print("  +----------+---------+----------+----------+")
-    for n, tiempos in resultados.items():
-        prom = sum(tiempos) / len(tiempos)
-        maxi = max(tiempos)
-        print(f"  |   {n}x{n}    |   {n*n:>2}    | {prom:>6.4f}s | {maxi:>6.4f}s |")
-    print("  +----------+---------+----------+----------+")
-
-    return resultados
-
-
-def graficar_resultados(resultados):
-    """
-    Genera un gráfico de barras con los tiempos de benchmark.
-    Requiere matplotlib (pip install matplotlib).
-    """
-    try:
-        import matplotlib.pyplot as plt
-
-        sizes = list(resultados.keys())
-        promedios = [sum(t) / len(t) for t in resultados.values()]
-        labels = [f"{n}x{n}\n({n*n} pz)" for n in sizes]
-
-        colores = ['#2ecc71', '#3498db', '#e74c3c', '#9b59b6']
-
-        fig, ax = plt.subplots(figsize=(8, 5))
-        barras = ax.bar(labels, promedios, color=colores[:len(sizes)])
-
-        for barra, prom in zip(barras, promedios):
-            ax.text(barra.get_x() + barra.get_width() / 2,
-                    barra.get_height() + 0.01,
-                    f'{prom:.4f}s',
-                    ha='center', va='bottom', fontsize=10, fontweight='bold')
-
-        ax.set_xlabel('Tamano del tablero', fontsize=12)
-        ax.set_ylabel('Tiempo promedio (segundos)', fontsize=12)
-        ax.set_title('TetraVex: Crecimiento del tiempo de resolucion\n'
-                     '(Comportamiento NP-Completo)',
-                     fontsize=13, fontweight='bold')
-        ax.grid(axis='y', alpha=0.3)
-
-        plt.tight_layout()
-        plt.savefig('tetravex_benchmark.png', dpi=150)
-        plt.show()
-        print("  Grafico guardado como 'tetravex_benchmark.png'")
-
-    except ImportError:
-        print("  matplotlib no disponible. Datos para graficar:")
-        for n, tiempos in resultados.items():
-            prom = sum(tiempos) / len(tiempos)
-            print(f"    {n}x{n}: {prom:.4f}s")
-
-
-# =============================================================================
-#  PROGRAMA PRINCIPAL — Menú Interactivo
-# =============================================================================
-
 def menu_principal():
     """Menú interactivo del solver."""
 
@@ -371,63 +229,20 @@ def menu_principal():
     print("  Taller 1 — Universidad de Tarapaca, 1/2026")
     print("=" * 65)
 
-    # Variable para almacenar resultados del benchmark
-    ultimos_resultados = None
-
     while True:
         print("\n  +-------------------------------------------+")
         print("  |            MENU PRINCIPAL                  |")
         print("  +-------------------------------------------+")
-        print("  |  1. Resolver ejemplo del PDF (3x3)         |")
-        print("  |  2. Generar y resolver puzzle aleatorio     |")
-        print("  |  3. Ingresar puzzle manualmente             |")
-        print("  |  4. Benchmark (analisis NP-Completo)        |")
-        print("  |  5. Graficar resultados de benchmark        |")
-        print("  |  6. Salir                                   |")
+        print("  |  1. Generar y resolver puzzle aleatorio     |")
+        print("  |  2. Ingresar puzzle manualmente             |")
+        print("  |  3. Salir                                   |")
         print("  +-------------------------------------------+")
 
         opcion = input("\n  Seleccione una opcion: ").strip()
 
-        # ── 1: Ejemplo del PDF ──
+
+        # ── 1: Puzzle aleatorio ──
         if opcion == "1":
-            puzzle_input = [
-                [(1, 9, 2, 2), (1, 9, 4, 9), (6, 8, 9, 7)],
-                [(9, 9, 2, 9), (0, 6, 9, 5), (0, 1, 5, 4)],
-                [(4, 0, 7, 7), (5, 1, 4, 7), (7, 0, 6, 4)]
-            ]
-
-            puzzle_dict = crear_puzzle(puzzle_input)
-            print(f"\n  Puzzle: {puzzle_dict['n']}x{puzzle_dict['n']} "
-                  f"con {len(puzzle_dict['tiles'])} piezas")
-            imprimir_puzzle(
-                reshapear(puzzle_dict["tiles"], puzzle_dict["n"]),
-                "Piezas de entrada"
-            )
-
-            print("\n  Resolviendo con miniKanren (membero + neq + match)...")
-            inicio = time.time()
-            solucion = solve_tetravex(puzzle_dict)
-            t = time.time() - inicio
-
-            imprimir_puzzle(solucion, "Solucion encontrada")
-            imprimir_visual(solucion, "Solucion (vista visual)")
-            print(f"\n  Tiempo de resolucion: {t:.4f} segundos")
-            verificar_solucion(solucion)
-
-            # Comparar con la solución esperada del PDF
-            esperada = [
-                [(7, 0, 6, 4), (0, 1, 5, 4), (1, 9, 2, 2)],
-                [(5, 1, 4, 7), (1, 9, 4, 9), (9, 9, 2, 9)],
-                [(4, 0, 7, 7), (0, 6, 9, 5), (6, 8, 9, 7)]
-            ]
-            if solucion == esperada:
-                print("  Coincide exactamente con la solucion del PDF.")
-            elif solucion is not None:
-                print("  Solucion valida (puede diferir del PDF si hay")
-                print("  multiples soluciones validas).")
-
-        # ── 2: Puzzle aleatorio ──
-        elif opcion == "2":
             print("\n  Tamano del tablero:")
             print("    a) 2x2  (4 piezas)")
             print("    b) 3x3  (9 piezas)")
@@ -460,8 +275,8 @@ def menu_principal():
             else:
                 print(f"\n  No se encontro solucion. Tiempo: {t:.4f}s")
 
-        # ── 3: Puzzle manual ──
-        elif opcion == "3":
+        # ── 2: Puzzle manual ──
+        elif opcion == "2":
             print("\n  Tamano del tablero:")
             print("    a) 2x2  (4 piezas)")
             print("    b) 3x3  (9 piezas)")
@@ -494,44 +309,13 @@ def menu_principal():
                 print(f"\n  No se encontro solucion en {t:.4f}s")
                 print("  Verifique que las piezas sean correctas.")
 
-        # ── 4: Benchmark ──
-        elif opcion == "4":
-            print("\n  Tamanos a probar:")
-            print("    a) 2x2, 3x3")
-            print("    b) 2x2, 3x3, 4x4")
-            print("    c) 2x2, 3x3, 4x4, 5x5  (puede ser lento)")
-            sel = input("  Seleccione: ").strip().lower()
-
-            mapa = {
-                'a': [2, 3],
-                'b': [2, 3, 4],
-                'c': [2, 3, 4, 5]
-            }
-            sizes = mapa.get(sel, [2, 3, 4])
-
-            inp = input("  Numero de intentos por tamano (default 3): ").strip()
-            intentos = int(inp) if inp.isdigit() else 3
-
-            ultimos_resultados = benchmark(sizes=sizes, intentos=intentos)
-
-        # ── 5: Graficar ──
-        elif opcion == "5":
-            if ultimos_resultados:
-                graficar_resultados(ultimos_resultados)
-            else:
-                print("  Primero ejecute un benchmark (opcion 4).")
-
-        # ── 6: Salir ──
-        elif opcion == "6":
+        # ── 3: Salir ──
+        elif opcion == "3":
             print("\n  Hasta luego!\n")
             break
 
         else:
             print("  Opcion no valida. Intente de nuevo.")
 
-
-# =============================================================================
-#  PUNTO DE ENTRADA
-# =============================================================================
 if __name__ == "__main__":
     menu_principal()
