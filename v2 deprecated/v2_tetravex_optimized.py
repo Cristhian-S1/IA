@@ -1,12 +1,13 @@
 import random
 import time
+from collections import defaultdict
 from kanren import var, run, eq, membero, conde, lall
 from kanren.constraints import neq
 
 IZQ = 0   # Borde izquierdo
 DER = 1   # Borde derecho
-ARR = 2   # Borde superior (arriba)
-ABJ = 3   # Borde inferior (abajo)
+ARR = 2   # Borde arriba
+ABJ = 3   # Borde abajo
 
 def crear_puzzle(puzzle_input):
     n = len(puzzle_input)
@@ -16,55 +17,99 @@ def crear_puzzle(puzzle_input):
             tiles.append(tuple(pieza))
     return {"n": n, "tiles": tiles}
 
+def construir_indices(tiles):
+    por_izq = defaultdict(list)
+    por_der = defaultdict(list)
+    por_arr = defaultdict(list)
+    por_abj = defaultdict(list)
+
+    for pieza in tiles:
+        por_izq[pieza[IZQ]].append(pieza)
+        por_der[pieza[DER]].append(pieza)
+        por_arr[pieza[ARR]].append(pieza)
+        por_abj[pieza[ABJ]].append(pieza)
+
+    return { "por_izq": por_izq, "por_der": por_der, "por_arr": por_arr, "por_abj": por_abj }
+
 def coincidencia_horizontal(pieza_izq, pieza_der):
     l1, r1, t1, b1 = var(), var(), var(), var()
     l2, r2, t2, b2 = var(), var(), var(), var()
     return lall(
-        eq(pieza_izq, (l1, r1, t1, b1)),   # Destructurar pieza izquierda
-        eq(pieza_der, (l2, r2, t2, b2)),   # Destructurar pieza derecha
-        eq(r1, l2)                          # Restricción R1: der(izq) == izq(der)
+        eq(pieza_izq, (l1, r1, t1, b1)),
+        eq(pieza_der, (l2, r2, t2, b2)),
+        eq(r1, l2)
     )
 
 def coincidencia_vertical(pieza_sup, pieza_inf):
     l1, r1, t1, b1 = var(), var(), var(), var()
     l2, r2, t2, b2 = var(), var(), var(), var()
     return lall(
-        eq(pieza_sup, (l1, r1, t1, b1)),   # Destructurar pieza superior
-        eq(pieza_inf, (l2, r2, t2, b2)),   # Destructurar pieza inferior
-        eq(b1, t2)                          # Restricción R2: abj(sup) == arr(inf)
+        eq(pieza_sup, (l1, r1, t1, b1)),
+        eq(pieza_inf, (l2, r2, t2, b2)),
+        eq(b1, t2)
     )
 
 def resolver_tetravex(puzzle_dict):
     n = puzzle_dict["n"]
     tiles = puzzle_dict["tiles"]
 
+    # Crear variables lógicas para cada celda
     grid = [[var(f'cell_{r}_{c}') for c in range(n)] for r in range(n)]
     flat = [grid[r][c] for r in range(n) for c in range(n)]
 
-    goals = []
-    for r in range(n):
-        for c in range(n):
-            idx = r * n + c 
-            goals.append(membero(grid[r][c], tiles))
+    # Construir el goal recursivo que asigna pieza por pieza
+    goal = _colocar_pieza(grid, tuple(tiles), n, 0, 0, {})
+    # Ejecutar miniKanren
+    result = run(1, flat, goal)
 
-            if c > 0:
-                goals.append(coincidencia_horizontal(grid[r][c - 1], grid[r][c]))
-
-            if r > 0:
-                goals.append(coincidencia_vertical(grid[r - 1][c], grid[r][c]))
-
-            for prev_idx in range(idx):
-                pr, pc = prev_idx // n, prev_idx % n
-                goals.append(neq(grid[pr][pc], grid[r][c]))
-
-    result = run(1, flat, *goals)
-
-    # Reconstruimos la grilla nxn 
     if result:
-        solution = result[0]
-        return reconstruir(solution, n)
-
+        return reconstruir(result[0], n)
     return None
+
+def _colocar_pieza(grid, disponibles, n, r, c, colocadas):
+    # ── Caso base: todas las celdas llenadas exitosamente ──
+    if r >= n:
+        return lall()  # Éxito: no hay más condiciones
+
+    # Calcular siguiente posición (recorrido fila por fila)
+    sig_r, sig_c = (r, c + 1) if c + 1 < n else (r + 1, 0)
+
+    # ── Filtrar piezas candidatas ──
+    clausulas = []
+
+    for i in range(len(disponibles)):
+        pieza = disponibles[i]
+
+        # Verificar restricción HORIZONTAL: Si hay vecino a la izquierda, su borde derecho debe
+        # coincidir con el borde izquierdo de esta pieza.
+        if c > 0:
+            vecino_izq = colocadas[(r, c - 1)]
+            if vecino_izq[DER] != pieza[IZQ]:
+                continue  # Poda: pieza incompatible → no incluir
+
+        # Verificar restricción VERTICAL: Si hay vecino arriba, su borde inferior debe coincidir
+        # con el borde superior de esta pieza.
+        if r > 0:
+            vecino_sup = colocadas[(r - 1, c)]
+            if vecino_sup[ABJ] != pieza[ARR]:
+                continue  # Poda: pieza incompatible → no incluir
+
+        # ── Pieza válida: construir cláusula para conde ──
+        nuevas_disponibles = disponibles[:i] + disponibles[i+1:]
+        nuevas_colocadas = dict(colocadas)
+        nuevas_colocadas[(r, c)] = pieza
+
+        clausulas.append([
+            eq(grid[r][c], pieza),                                              # Unificar celda con pieza
+            _colocar_pieza(grid, nuevas_disponibles, n, sig_r, sig_c, nuevas_colocadas)  # Recurrir
+        ])
+
+    # ── Si no hay candidatas válidas → goal que falla ──
+    if not clausulas:
+        return lambda s: iter([])  # Fail: miniKanren hace backtrack
+
+    # ── conde: miniKanren explorará cada alternativa ──
+    return conde(*clausulas)
 
 def reconstruir(flat_solution, n):
     grid = []
@@ -74,6 +119,33 @@ def reconstruir(flat_solution, n):
             fila.append(flat_solution[r * n + c])
         grid.append(fila)
     return grid
+
+def verificar_solucion(grid):
+    if grid is None:
+        return False
+
+    n = len(grid)
+    errores = 0
+
+    for r in range(n):
+        for c in range(n):
+            if c + 1 < n:
+                if grid[r][c][DER] != grid[r][c + 1][IZQ]:
+                    print(f"  X Horizontal ({r},{c})->({r},{c+1}): "
+                          f"{grid[r][c][DER]} != {grid[r][c+1][IZQ]}")
+                    errores += 1
+            if r + 1 < n:
+                if grid[r][c][ABJ] != grid[r + 1][c][ARR]:
+                    print(f"  X Vertical ({r},{c})->({r+1},{c}): "
+                          f"{grid[r][c][ABJ]} != {grid[r+1][c][ARR]}")
+                    errores += 1
+
+    if errores == 0:
+        print("  [OK] Solucion valida — todas las restricciones satisfechas.")
+    else:
+        print(f"  [FAIL] {errores} restriccion(es) violada(s).")
+
+    return errores == 0
 
 def imprimir_puzzle(grid, titulo="Puzzle"):
     if grid is None:
@@ -96,7 +168,6 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
     n = len(grid)
 
     for r in range(n):
-        # Línea superior: borde de arriba de cada pieza
         linea_top = ""
         for c in range(n):
             linea_top += f"   {grid[r][c][ARR]}   "
@@ -104,7 +175,6 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
                 linea_top += "|"
         print("  " + linea_top)
 
-        # Línea media: borde izquierdo y derecho
         linea_mid = ""
         for c in range(n):
             linea_mid += f" {grid[r][c][IZQ]}   {grid[r][c][DER]} "
@@ -112,7 +182,6 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
                 linea_mid += "|"
         print("  " + linea_mid)
 
-        # Línea inferior: borde de abajo
         linea_bot = ""
         for c in range(n):
             linea_bot += f"   {grid[r][c][ABJ]}   "
@@ -120,39 +189,8 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
                 linea_bot += "|"
         print("  " + linea_bot)
 
-        # Separador entre filas
         if r < n - 1:
             print("  " + ("-------+" * (n - 1)) + "-------")
-
-def verificar_solucion(grid):
-    if grid is None:
-        return False
-
-    n = len(grid)
-    errores = 0
-
-    for r in range(n):
-        for c in range(n):
-            # R1: Horizontal
-            if c + 1 < n:
-                if grid[r][c][DER] != grid[r][c + 1][IZQ]:
-                    print(f"  X Horizontal ({r},{c})->({r},{c+1}): "
-                          f"{grid[r][c][DER]} != {grid[r][c+1][IZQ]}")
-                    errores += 1
-
-            # R2: Vertical
-            if r + 1 < n:
-                if grid[r][c][ABJ] != grid[r + 1][c][ARR]:
-                    print(f"  X Vertical ({r},{c})->({r+1},{c}): "
-                          f"{grid[r][c][ABJ]} != {grid[r+1][c][ARR]}")
-                    errores += 1
-
-    if errores == 0:
-        print("  [OK] Solucion valida — todas las restricciones satisfechas.")
-    else:
-        print(f"  [FAIL] {errores} restriccion(es) violada(s).")
-
-    return errores == 0
 
 def generar_puzzle_aleatorio(n, max_val=9):
     grid = [[None for _ in range(n)] for _ in range(n)]
@@ -164,28 +202,22 @@ def generar_puzzle_aleatorio(n, max_val=9):
             arriba = random.randint(0, max_val)
             abajo  = random.randint(0, max_val)
 
-            # Forzar coincidencia con vecino izquierdo
             if c > 0:
                 izq = grid[r][c - 1][DER]
-
-            # Forzar coincidencia con vecino superior
             if r > 0:
                 arriba = grid[r - 1][c][ABJ]
 
             grid[r][c] = (izq, der, arriba, abajo)
 
-    # Mezclar piezas aleatoriamente
     piezas = [grid[r][c] for r in range(n) for c in range(n)]
     random.shuffle(piezas)
 
-    # Reestructurar como lista de listas
     puzzle = []
     for r in range(n):
         fila = []
         for c in range(n):
             fila.append(piezas[r * n + c])
         puzzle.append(fila)
-
     return puzzle
 
 def leer_puzzle_manual(n):
@@ -206,14 +238,12 @@ def leer_puzzle_manual(n):
                 break
             except ValueError:
                 print("    -> Error: ingrese numeros enteros validos.")
-
     puzzle = []
     for r in range(n):
         fila = []
         for c in range(n):
             fila.append(piezas[r * n + c])
         puzzle.append(fila)
-
     return puzzle
 
 def benchmark(sizes=None, intentos=3, max_val=9):

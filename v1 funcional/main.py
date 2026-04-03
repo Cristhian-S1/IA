@@ -1,25 +1,23 @@
 import time
-from v1_tetravex import (
-    crear_puzzle, resolver_tetravex, imprimir_puzzle, imprimir_puzzle_diamante,
-    verificar_solucion, generar_puzzle_aleatorio, leer_puzzle_manual,
-    benchmark, graficar_resultados
+from v1_funciones import (
+    crear_puzzle, resolver_tetravex
+)
+from v1_misc import (
+    imprimir_puzzle,generar_puzzle_aleatorio, leer_puzzle_manual,
+    verificar_solucion
 )
 
 """Menú interactivo con opciones para el Tetravex"""
 print()
-print("=" * 65)
 print("  Tetravex con MiniKanren")
-print("=" * 65)
 
 while True:
     print("\n  +-------------------------------------------+")
-    print("  |            MENU PRINCIPAL                  |")
+    print("  |            Menu Principal                   |")
     print("  +-------------------------------------------+")
     print("  |  1. Generar y resolver puzzle aleatorio     |")
     print("  |  2. Ingresar puzzle manualmente             |")
-    print("  |  3. Benchmark                               |")
-    print("  |  4. Graficar resultados de benchmark        |")
-    print("  |  5. Salir                                   |")
+    print("  |  3. Salir                                   |")
     print("  +-------------------------------------------+")
 
     opcion = input("\n  Seleccione una opcion: ").strip()
@@ -52,7 +50,6 @@ while True:
 
         if solucion:
             imprimir_puzzle(solucion, "Solucion")
-            imprimir_puzzle_diamante(solucion, "Solucion (visual)")
             print(f"\n  Tiempo: {t:.4f} segundos")
             verificar_solucion(solucion)
         else:
@@ -85,40 +82,14 @@ while True:
 
         if solucion:
             imprimir_puzzle(solucion, "Solucion")
-            imprimir_puzzle_diamante(solucion, "Solucion (visual)")
             print(f"\n  Tiempo: {t:.4f} segundos")
             verificar_solucion(solucion)
         else:
             print(f"\n  No se encontro solucion en {t:.4f}s")
             print("  Verifique que las piezas sean correctas.")
 
+    # ── 3: Salir ──
     elif opcion == "3":
-        print("\n  Tamanos a probar:")
-        print("    a) 2x2, 3x3")
-        print("    b) 2x2, 3x3, 4x4")
-        print("    c) 2x2, 3x3, 4x4, 5x5  (puede ser lento)")
-        sel = input("  Seleccione: ").strip().lower()
-
-        mapa = {
-            'a': [2, 3],
-            'b': [2, 3, 4],
-            'c': [2, 3, 4, 5]
-        }
-        sizes = mapa.get(sel, [2, 3, 4])
-
-        inp = input("  Numero de intentos por tamano (default 3): ").strip()
-        intentos = int(inp) if inp.isdigit() else 3
-
-        ultimos_resultados = benchmark(sizes=sizes, intentos=intentos)
-    
-    elif opcion == "4":
-        if ultimos_resultados:
-                graficar_resultados(ultimos_resultados)
-        else:
-            print("  Primero ejecute un benchmark (opcion 4).")
-
-    # ── 5: Salir ──
-    elif opcion == "5":
         print("\n  Hasta luego!\n")
         break
 
