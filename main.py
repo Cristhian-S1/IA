@@ -3,7 +3,7 @@ from v1_funciones import (
     crear_puzzle, resolver_tetravex
 )
 from v1_misc import (
-    imprimir_puzzle,generar_puzzle_aleatorio, leer_puzzle_manual,
+    imprimir_puzzle,tetravex_aleatorio, leer_puzzle_manual,
     verificar_solucion
 )
 
@@ -29,23 +29,28 @@ while True:
         print("    b) 3x3  (9 piezas)")
         print("    c) 4x4  (16 piezas)")
         print("    d) 5x5  (25 piezas)")
-        tam = input("  Seleccione: ").strip().lower()
+        tamanio_tablero = input("  Seleccione: ").strip().lower()
 
-        mapa_tam = {'a': 2, 'b': 3, 'c': 4, 'd': 5}
-        if tam not in mapa_tam:
+        tamanio_opciones = {'a': 2, 'b': 3, 'c': 4, 'd': 5}
+        if tamanio_tablero not in tamanio_opciones:
             print("  Opcion no valida.")
             continue
 
-        n = mapa_tam[tam]
-        print(f"\n  Generando puzzle aleatorio {n}x{n}...")
-        puzzle_input = generar_puzzle_aleatorio(n)
-        puzzle_dict = crear_puzzle(puzzle_input)
+        tamanio = tamanio_opciones[tamanio_tablero]
+        print(f"\n  Generando puzzle aleatorio {tamanio}x{tamanio}...")
 
-        imprimir_puzzle(puzzle_input, f"Puzzle generado ({n}x{n})")
+        # tetravex = [ [(),(),()], [(),(),()], [(),(),()] ] tetravex por fila
+        tetravex_lista_lista_tupla = tetravex_aleatorio(tamanio)
+        print("tetravex donde cada fila es una lista que contiene fichas tipo tupla ",tetravex_lista_lista_tupla)
+        # {tamanio: 3, tetravex: [ (),(),(),(),(),(),() ]} tetravex plano
+        tetravex_diccionario = crear_puzzle(tetravex_lista_lista_tupla)
+        print("tetravex donde se tiene la clave del tamanio y el tablero",tetravex_diccionario)
+
+        imprimir_puzzle(tetravex_lista_lista_tupla, f"Puzzle generado ({tamanio}x{tamanio})")
 
         print(f"\n  Resolviendo con miniKanren...")
         inicio = time.time()
-        solucion = resolver_tetravex(puzzle_dict)
+        solucion = resolver_tetravex(tetravex_diccionario)
         t = time.time() - inicio
 
         if solucion:
@@ -62,22 +67,22 @@ while True:
         print("    b) 3x3  (9 piezas)")
         print("    c) 4x4  (16 piezas)")
         print("    d) 5x5  (25 piezas)")
-        tam = input("  Seleccione: ").strip().lower()
+        tamanio_tablero = input("  Seleccione: ").strip().lower()
 
-        mapa_tam = {'a': 2, 'b': 3, 'c': 4, 'd': 5}
-        if tam not in mapa_tam:
+        tamanio_opciones = {'a': 2, 'b': 3, 'c': 4, 'd': 5}
+        if tamanio_tablero not in tamanio_opciones:
             print("  Opcion no valida.")
             continue
 
-        n = mapa_tam[tam]
-        puzzle_input = leer_puzzle_manual(n)
-        puzzle_dict = crear_puzzle(puzzle_input)
+        n = tamanio_opciones[tamanio_tablero]
+        tetravex_lista_lista_tupla = leer_puzzle_manual(n)
+        tetravex_diccionario = crear_puzzle(tetravex_lista_lista_tupla)
 
-        imprimir_puzzle(puzzle_input, f"Puzzle ingresado ({n}x{n})")
+        imprimir_puzzle(tetravex_lista_lista_tupla, f"Puzzle ingresado ({n}x{n})")
 
         print(f"\n  Resolviendo con miniKanren...")
         inicio = time.time()
-        solucion = resolver_tetravex(puzzle_dict)
+        solucion = resolver_tetravex(tetravex_diccionario)
         t = time.time() - inicio
 
         if solucion:

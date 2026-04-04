@@ -241,11 +241,11 @@ def resolver_tetravex(puzzle_dict):
 
     # ── Paso 1: Crear variables lógicas ──
     # Cada celda del tablero es una incógnita que miniKanren debe resolver.
-    # grid[r][c] es la variable para la fila r, columna c.
-    grid = [[var(f'cell_{r}_{c}') for c in range(n)] for r in range(n)]
+    # tablero[r][c] es la variable para la fila r, columna c.
+    tablero = [[var(f'cell_{r}_{c}') for c in range(n)] for r in range(n)]
 
     # Lista plana de variables para pasarla a run() como consulta
-    flat = [grid[r][c] for r in range(n) for c in range(n)]
+    flat = [tablero[r][c] for r in range(n) for c in range(n)]
 
     # ── Pasos 2, 3 y 4: Construir lista de metas (goals) ──
     #
@@ -277,7 +277,7 @@ def resolver_tetravex(puzzle_dict):
             #   )
             # Esto le dice a miniKanren: "esta celda puede ser
             # cualquiera de las piezas disponibles".
-            goals.append(membero(grid[r][c], tiles))
+            goals.append(membero(tablero[r][c], tiles))
 
             # ─── (b) ADYACENCIA ───
             # Se añaden justo después del membero para que miniKanren
@@ -286,11 +286,11 @@ def resolver_tetravex(puzzle_dict):
 
             # Horizontal: derecha del vecino izquierdo == izquierda actual
             if c > 0:
-                goals.append(coincidencia_horizontal(grid[r][c - 1], grid[r][c]))
+                goals.append(coincidencia_horizontal(tablero[r][c - 1], tablero[r][c]))
 
             # Vertical: abajo del vecino superior == arriba actual
             if r > 0:
-                goals.append(coincidencia_vertical(grid[r - 1][c], grid[r][c]))
+                goals.append(coincidencia_vertical(tablero[r - 1][c], tablero[r][c]))
 
             # ─── (c) UNICIDAD ───
             # neq(a, b) agrega una restricción de desigualdad que se
@@ -298,7 +298,7 @@ def resolver_tetravex(puzzle_dict):
             # obtienen valores concretos, miniKanren verifica que difieran.
             for prev_idx in range(idx):
                 pr, pc = prev_idx // n, prev_idx % n
-                goals.append(neq(grid[pr][pc], grid[r][c]))
+                goals.append(neq(tablero[pr][pc], tablero[r][c]))
 
     # ── Paso 5: Ejecutar el solver de miniKanren ──
     # run(1, flat, *goals):
@@ -322,18 +322,18 @@ def resolver_tetravex(puzzle_dict):
 #  UTILIDADES
 # =============================================================================
 
-def reconstruir(flat_solution, n):
+def reconstruir(solucion_plana, n):
     """Convierte una solución plana (tupla de N² piezas) en grilla N×N."""
-    grid = []
+    tablero = []
     for r in range(n):
         fila = []
         for c in range(n):
-            fila.append(flat_solution[r * n + c])
-        grid.append(fila)
-    return grid
+            fila.append(solucion_plana[r * n + c])
+        tablero.append(fila)
+    return tablero
 
 
-def imprimir_puzzle(grid, titulo="Puzzle"):
+def imprimir_puzzle(tablero, titulo="Puzzle"):
     """
     Imprime el tablero en formato compacto de tuplas.
 
@@ -342,19 +342,19 @@ def imprimir_puzzle(grid, titulo="Puzzle"):
       (5 1 4 7) (1 9 4 9) (9 9 2 9)
       (4 0 7 7) (0 6 9 5) (6 8 9 7)
     """
-    if grid is None:
+    if tablero is None:
         print(f"\n{titulo}: Sin solucion!")
         return
 
     print(f"\n{titulo}:")
-    for fila in grid:
+    for fila in tablero:
         partes = []
         for pieza in fila:
             partes.append(f"({pieza[IZQ]} {pieza[DER]} {pieza[ARR]} {pieza[ABJ]})")
         print("  " + " ".join(partes))
 
 
-def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
+def imprimir_puzzle_diamante(tablero, titulo="Puzzle"):
     """
     Imprime el tablero con piezas en formato diamante visual.
 
@@ -363,18 +363,18 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
         7   0
           4
     """
-    if grid is None:
+    if tablero is None:
         print(f"\n{titulo}: Sin solucion!")
         return
 
     print(f"\n{titulo}:")
-    n = len(grid)
+    n = len(tablero)
 
     for r in range(n):
         # Línea superior: borde de arriba de cada pieza
         linea_top = ""
         for c in range(n):
-            linea_top += f"   {grid[r][c][ARR]}   "
+            linea_top += f"   {tablero[r][c][ARR]}   "
             if c < n - 1:
                 linea_top += "|"
         print("  " + linea_top)
@@ -382,7 +382,7 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
         # Línea media: borde izquierdo y derecho
         linea_mid = ""
         for c in range(n):
-            linea_mid += f" {grid[r][c][IZQ]}   {grid[r][c][DER]} "
+            linea_mid += f" {tablero[r][c][IZQ]}   {tablero[r][c][DER]} "
             if c < n - 1:
                 linea_mid += "|"
         print("  " + linea_mid)
@@ -390,7 +390,7 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
         # Línea inferior: borde de abajo
         linea_bot = ""
         for c in range(n):
-            linea_bot += f"   {grid[r][c][ABJ]}   "
+            linea_bot += f"   {tablero[r][c][ABJ]}   "
             if c < n - 1:
                 linea_bot += "|"
         print("  " + linea_bot)
@@ -400,7 +400,7 @@ def imprimir_puzzle_diamante(grid, titulo="Puzzle"):
             print("  " + ("-------+" * (n - 1)) + "-------")
 
 
-def verificar_solucion(grid):
+def verificar_solucion(tablero):
     """
     Verifica que una solución satisfaga TODAS las restricciones CSP.
 
@@ -413,26 +413,26 @@ def verificar_solucion(grid):
     bool
         True si todas las restricciones se cumplen.
     """
-    if grid is None:
+    if tablero is None:
         return False
 
-    n = len(grid)
+    n = len(tablero)
     errores = 0
 
     for r in range(n):
         for c in range(n):
             # R1: Horizontal
             if c + 1 < n:
-                if grid[r][c][DER] != grid[r][c + 1][IZQ]:
+                if tablero[r][c][DER] != tablero[r][c + 1][IZQ]:
                     print(f"  X Horizontal ({r},{c})->({r},{c+1}): "
-                          f"{grid[r][c][DER]} != {grid[r][c+1][IZQ]}")
+                          f"{tablero[r][c][DER]} != {tablero[r][c+1][IZQ]}")
                     errores += 1
 
             # R2: Vertical
             if r + 1 < n:
-                if grid[r][c][ABJ] != grid[r + 1][c][ARR]:
+                if tablero[r][c][ABJ] != tablero[r + 1][c][ARR]:
                     print(f"  X Vertical ({r},{c})->({r+1},{c}): "
-                          f"{grid[r][c][ABJ]} != {grid[r+1][c][ARR]}")
+                          f"{tablero[r][c][ABJ]} != {tablero[r+1][c][ARR]}")
                     errores += 1
 
     if errores == 0:
@@ -443,7 +443,7 @@ def verificar_solucion(grid):
     return errores == 0
 
 
-def generar_puzzle_aleatorio(n, max_val=9):
+def tetravex_aleatorio(n, valor_maximo_ficha=9):
     """
     Genera un puzzle TetraVex aleatorio y resoluble de tamaño N×N.
 
@@ -457,35 +457,35 @@ def generar_puzzle_aleatorio(n, max_val=9):
     ----------
     n : int
         Dimensión del tablero.
-    max_val : int
-        Valor máximo para los bordes (rango 0 a max_val).
+    valor_maximo_ficha : int
+        Valor máximo para los bordes (rango 0 a valor_maximo_ficha).
 
     Retorna
     -------
     list[list[tuple]]
         Puzzle mezclado en formato de entrada.
     """
-    grid = [[None for _ in range(n)] for _ in range(n)]
+    tablero = [[None for _ in range(n)] for _ in range(n)]
 
     for r in range(n):
         for c in range(n):
-            izq    = random.randint(0, max_val)
-            der    = random.randint(0, max_val)
-            arriba = random.randint(0, max_val)
-            abajo  = random.randint(0, max_val)
+            izq    = random.randint(0, valor_maximo_ficha)
+            der    = random.randint(0, valor_maximo_ficha)
+            arriba = random.randint(0, valor_maximo_ficha)
+            abajo  = random.randint(0, valor_maximo_ficha)
 
             # Forzar coincidencia con vecino izquierdo
             if c > 0:
-                izq = grid[r][c - 1][DER]
+                izq = tablero[r][c - 1][DER]
 
             # Forzar coincidencia con vecino superior
             if r > 0:
-                arriba = grid[r - 1][c][ABJ]
+                arriba = tablero[r - 1][c][ABJ]
 
-            grid[r][c] = (izq, der, arriba, abajo)
+            tablero[r][c] = (izq, der, arriba, abajo)
 
     # Mezclar piezas aleatoriamente
-    piezas = [grid[r][c] for r in range(n) for c in range(n)]
+    piezas = [tablero[r][c] for r in range(n) for c in range(n)]
     random.shuffle(piezas)
 
     # Reestructurar como lista de listas
@@ -538,7 +538,7 @@ def leer_puzzle_manual(n):
 #  BENCHMARKING — Análisis de Complejidad (NP-Completitud)
 # =============================================================================
 
-def benchmark(sizes=None, intentos=3, max_val=9):
+def benchmark(sizes=None, intentos=3, valor_maximo_ficha=9):
     """
     Ejecuta pruebas de rendimiento para analizar el crecimiento temporal.
 
@@ -554,7 +554,7 @@ def benchmark(sizes=None, intentos=3, max_val=9):
         Tamaños de tablero a probar.
     intentos : int
         Número de puzzles aleatorios por tamaño (se reporta promedio).
-    max_val : int
+    valor_maximo_ficha : int
         Rango de valores en las piezas.
 
     Retorna
@@ -576,7 +576,7 @@ def benchmark(sizes=None, intentos=3, max_val=9):
         print(f"\n  Tablero {n}x{n} ({n * n} piezas):")
 
         for t in range(intentos):
-            puzzle_input = generar_puzzle_aleatorio(n, max_val)
+            puzzle_input = tetravex_aleatorio(n, valor_maximo_ficha)
             puzzle_dict = crear_puzzle(puzzle_input)
 
             inicio = time.time()
@@ -633,7 +633,7 @@ def graficar_resultados(resultados):
         ax.set_title('TetraVex: Crecimiento del tiempo de resolucion\n'
                      '(Comportamiento NP-Completo)',
                      fontsize=13, fontweight='bold')
-        ax.grid(axis='y', alpha=0.3)
+        ax.tablero(axis='y', alpha=0.3)
 
         plt.tight_layout()
         plt.savefig('tetravex_benchmark.png', dpi=150)
@@ -732,7 +732,7 @@ def menu_principal():
 
             n = mapa_tam[tam]
             print(f"\n  Generando puzzle aleatorio {n}x{n}...")
-            puzzle_input = generar_puzzle_aleatorio(n)
+            puzzle_input = tetravex_aleatorio(n)
             puzzle_dict = crear_puzzle(puzzle_input)
 
             imprimir_puzzle(puzzle_input, f"Puzzle generado ({n}x{n})")
