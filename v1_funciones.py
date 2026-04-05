@@ -1,4 +1,4 @@
-from kanren import var, run, eq, membero, conde, lall
+from kanren import var, run, eq, membero, lall
 from kanren.constraints import neq
 
 from v1_misc import (
@@ -38,32 +38,28 @@ def coincidencia_vertical(pieza_sup, pieza_inf):
 
 def resolver_tetravex(tetravex_diccionario):
     tamanio = tetravex_diccionario["tamanio"]
-    pieza = tetravex_diccionario["piezas"]
+    piezas = tetravex_diccionario["piezas"]
+    n = tamanio * tamanio
 
-    tablero = [[var(f'cell_{fila}_{columna}') for columna in range(tamanio)] for fila in range(tamanio)]
-    plano = [tablero[fila][columna] for fila in range(tamanio) for columna in range(tamanio)]
-
+    celdas = [var(f'c{i}') for i in range(n)]
     objetivos = []
-    for fila in range(tamanio):
-        for columna in range(tamanio):
-            identificador = fila * tamanio + columna 
-            objetivos.append(membero(tablero[fila][columna], pieza))
 
-            if columna > 0:
-                objetivos.append(coincidencia_horizontal(tablero[fila][columna - 1], tablero[fila][columna]))
+    for idx in range(n):
+        fila, columna = divmod(idx, tamanio)
 
-            if fila > 0:
-                objetivos.append(coincidencia_vertical(tablero[fila - 1][columna], tablero[fila][columna]))
+        # (1) membero: asigna un valor concreto a la celda
+        objetivos.append(membero(celdas[idx], piezas))
 
-            for prev_identificador in range(identificador):
-                p_fila, p_columna = prev_identificador // tamanio, prev_identificador % tamanio
-                objetivos.append(neq(tablero[p_fila][p_columna], tablero[fila][columna]))
+        # (2) adyacencia: poda inmediatamente si el valor asignado no
+        #     coincide con el borde del vecino ya colocado
+        if columna > 0:
+            objetivos.append(coincidencia_horizontal(celdas[idx - 1], celdas[idx]))
+        if fila > 0:
+            objetivos.append(coincidencia_vertical(celdas[idx - tamanio], celdas[idx]))
 
-    resulto = run(1, plano, *objetivos)
+        # (3) unicidad: la celda no puede repetir ninguna pieza anterior
+        for prev in range(idx):
+            objetivos.append(neq(celdas[prev], celdas[idx]))
 
-    # Reconstruimos la grilla nxn 
-    if resulto:
-        solucion = resulto[0]
-        return reconstruir(solucion, tamanio)
-    
-    return None
+    resultado = run(1, celdas, *objetivos)
+    return reconstruir(resultado[0], tamanio) if resultado else None
