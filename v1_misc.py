@@ -112,9 +112,9 @@ def leer_puzzle_manual(tamanio_tablero):
 
     tetravex = []
     for fila in range(tamanio_tablero):
-        fila = []
+        filas = []
         for columna in range(tamanio_tablero):
-            fila.append(piezas[fila * tamanio_tablero + columna])
-        tetravex.append(fila)
+            filas.append(piezas[fila * tamanio_tablero + columna])
+        tetravex.append(filas)
 
     return tetravex
