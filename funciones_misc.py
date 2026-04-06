@@ -6,6 +6,7 @@ ARR = 2   # Borde superior (arriba)
 ABJ = 3   # Borde inferior (abajo)
 
 def reconstruir(solucion_plana, tamanio_tablero):
+    """ Recibe la lista plana que devuelve MiniKanren y la convierte de vuelta a una lista de listas o 2D"""
     tablero = []
     for fila in range(tamanio_tablero):
         filas = []
@@ -13,18 +14,6 @@ def reconstruir(solucion_plana, tamanio_tablero):
             filas.append(solucion_plana[fila * tamanio_tablero + columna])
         tablero.append(filas)
     return tablero
-
-def imprimir_puzzle(tablero, titulo="Puzzle"):
-    if tablero is None:
-        print(f"\n{titulo}: Sin solucion!")
-        return
-
-    print(f"\n{titulo}:")
-    for fila in tablero:
-        partes = []
-        for pieza in fila:
-            partes.append(f"({pieza[IZQ]} {pieza[DER]} {pieza[ARR]} {pieza[ABJ]})")
-        print("  " + " ".join(partes))
 
 def verificar_solucion(tablero):
     if tablero is None:
@@ -56,6 +45,17 @@ def verificar_solucion(tablero):
 
     return errores == 0
 
+def imprimir_puzzle(tablero, titulo="TetraVex"):
+    if tablero is None:
+        print(f"\n{titulo}: Sin solucion!")
+        return
+
+    print(f"\n{titulo}:")
+    for fila in tablero:
+        partes = []
+        for pieza in fila:
+            partes.append(f"({pieza[IZQ]} {pieza[DER]} {pieza[ARR]} {pieza[ABJ]})")
+        print("  " + " ".join(partes))
 
 def tetravex_aleatorio(tamanio_tablero, valor_maximo_ficha=9):
     tablero = [[None for _ in range(tamanio_tablero)] for _ in range(tamanio_tablero)]
@@ -118,3 +118,4 @@ def leer_puzzle_manual(tamanio_tablero):
         tetravex.append(filas)
 
     return tetravex
+

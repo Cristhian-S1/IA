@@ -1,7 +1,7 @@
 from kanren import var, run, eq, membero, lall
 from kanren.constraints import neq
 
-from v1_misc import (
+from funciones_misc import (
     reconstruir
 )
 
@@ -14,8 +14,8 @@ def crear_puzzle(tetravex_lista_lista_tupla):
     tamanio = len(tetravex_lista_lista_tupla)
     celdas = []
     for fila in tetravex_lista_lista_tupla:
-        for pieza in fila:
-            celdas.append(tuple(pieza))
+        for celda in fila:
+            celdas.append(tuple(celda))
     return {"tamanio": tamanio, "piezas": celdas}
 
 def coincidencia_horizontal(pieza_izq, pieza_der):
@@ -44,22 +44,22 @@ def resolver_tetravex(tetravex_diccionario):
     celdas = [var(f'c{i}') for i in range(n)]
     objetivos = []
 
-    for idx in range(n):
-        fila, columna = divmod(idx, tamanio)
+    for indice_tablero in range(n):
+        fila, columna = divmod(indice_tablero, tamanio)
 
         # (1) membero: asigna un valor concreto a la celda
-        objetivos.append(membero(celdas[idx], piezas))
+        objetivos.append(membero(celdas[indice_tablero], piezas))
 
         # (2) adyacencia: poda inmediatamente si el valor asignado no
         #     coincide con el borde del vecino ya colocado
         if columna > 0:
-            objetivos.append(coincidencia_horizontal(celdas[idx - 1], celdas[idx]))
+            objetivos.append(coincidencia_horizontal(celdas[indice_tablero - 1], celdas[indice_tablero]))
         if fila > 0:
-            objetivos.append(coincidencia_vertical(celdas[idx - tamanio], celdas[idx]))
+            objetivos.append(coincidencia_vertical(celdas[indice_tablero - tamanio], celdas[indice_tablero]))
 
         # (3) unicidad: la celda no puede repetir ninguna pieza anterior
-        for prev in range(idx):
-            objetivos.append(neq(celdas[prev], celdas[idx]))
+        for prev in range(indice_tablero):
+            objetivos.append(neq(celdas[prev], celdas[indice_tablero]))
 
     resultado = run(1, celdas, *objetivos)
     return reconstruir(resultado[0], tamanio) if resultado else None

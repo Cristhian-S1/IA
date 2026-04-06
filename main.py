@@ -1,23 +1,26 @@
 import time
-from v1_funciones import (
-    crear_puzzle, resolver_tetravex
-)
-from v1_misc import (
+from logica_kanren import crear_puzzle, resolver_tetravex
+from funciones_misc import (
     imprimir_puzzle,tetravex_aleatorio, leer_puzzle_manual,
     verificar_solucion
 )
+from benchmark import (benchmark, graficar_resultados)
 
 """Menú interactivo con opciones para el Tetravex"""
 print()
-print("  Tetravex con MiniKanren")
+print("Tetravex con MiniKanren")
+
+ultimos_resultados = None
 
 while True:
     print("\n  +-------------------------------------------+")
     print("  |            Menu Principal                   |")
-    print("  +-------------------------------------------+")
+    print("  +---------------------------------------------+")
     print("  |  1. Generar y resolver puzzle aleatorio     |")
     print("  |  2. Ingresar puzzle manualmente             |")
-    print("  |  3. Salir                                   |")
+    print("  |  3. Benchmark                               |")
+    print("  |  4. Graficar resultados de benchmark        |")
+    print("  |  5. Salir                                   |")
     print("  +-------------------------------------------+")
 
     opcion = input("\n  Seleccione una opcion: ").strip()
@@ -93,8 +96,35 @@ while True:
             print(f"\n  No se encontro solucion en {t:.4f}s")
             print("  Verifique que las piezas sean correctas.")
 
-    # ── 3: Salir ──
+    # ── 3: Benchmark ──
     elif opcion == "3":
+        print("\n  Tamanos a probar:")
+        print("    a) 2x2, 3x3")
+        print("    b) 2x2, 3x3, 4x4")
+        print("    c) 2x2, 3x3, 4x4, 5x5  (Demasiado lento)")
+        sel = input("  Seleccione: ").strip().lower()
+
+        mapa = {
+            'a': [2, 3],
+            'b': [2, 3, 4],
+            'c': [2, 3, 4, 5]
+        }
+        tamanios = mapa.get(sel, [2, 3, 4])
+
+        intentos_input = input("  Ingrese el numero de intentos (por defecto 3): ").strip()
+        intentos = int(intentos_input) if intentos_input.isdigit() else 3
+
+        ultimos_resultados = benchmark(tamanio=tamanios, intentos=intentos)
+
+    # ── 4: Graficar ──
+    elif opcion == "4":
+        if ultimos_resultados:
+            graficar_resultados(ultimos_resultados)
+        else:
+            print("  Primero ejecute un benchmark (opcion 4).")
+
+    # ── 5: Salir ──
+    elif opcion == "5":
         print("\n  Hasta luego!\n")
         break
 
