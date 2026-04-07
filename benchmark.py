@@ -5,6 +5,7 @@ from funciones_misc import (
 )
 
 def benchmark(tamanio=None, intentos=3, valor_maximo_ficha=9):
+    # Mide el tiempo de resolución para tableros de distintos tamaños e imprime tabla resumen.
     if tamanio is None:
         tamanio = [2, 3, 4]
 
@@ -48,6 +49,7 @@ def benchmark(tamanio=None, intentos=3, valor_maximo_ficha=9):
     return resultados
 
 def graficar_resultados(resultados):
+    # Genera un gráfico de barras con los tiempos promedio; guarda PNG si matplotlib está disponible.
     try:
         import matplotlib.pyplot as plt
 
