@@ -2,7 +2,6 @@
 
 from logicpuzzles import *
 from time import perf_counter
-from kanren import *
 
 # Hay cuatro prestamos
 prestamo1 = ( 1,var(),var())

@@ -21,10 +21,12 @@ def restriccion2(golfers):
     return membero( (var(), "Denise", 59), golfers )
 
 def restriccion3():
-    # 3. Denise Detz, Bonita Bitz y la persona 
+    # 3. Denise Detz, Bonita Bitz y la persona
     # que ganó en 1921 eran todas golfistas diferentes.
-    temp = ( (var(), "Nellie", var()),(var(),"Shari",var()) )
-    return membero( golfer2, temp )
+    return lall(
+        neq(golfer2[1], "Denise"),
+        neq(golfer2[1], "Bonita"),
+    )
 
 def restriccion4(golfers):
     # 4. La persona que obtuvo un 61 ganó su torneo
@@ -40,18 +42,30 @@ def restriccion5(golfers):
     denise = (var(), "Denise", var())
     return somewhat_left_of(golfers, nellie, denise)
 
+def nombres_unicos():
+    return lall(
+        neq(golfer1[1], golfer2[1]),
+        neq(golfer1[1], golfer3[1]),
+        neq(golfer1[1], golfer4[1]),
+        neq(golfer2[1], golfer3[1]),
+        neq(golfer2[1], golfer4[1]),
+        neq(golfer3[1], golfer4[1]),
+    )
+
 def restos():
     bonita = (var(),"Bonita",var())
     denise = (var(),"Denise",var())
-    return lall( 
+    shari  = (var(),"Shari",var())
+    return lall(
         membero(bonita, (golfer1,golfer3)),
         membero(denise, (golfer3, golfer4)),
+        membero(shari,  golfers),
         membero( (var(),var(),60), golfers ),
         membero( (var(),var(),67), golfers )
      )
 
 def restricciones(golfers):
-    return lall(restriccion1(golfers),restriccion2(golfers),restriccion3(),restriccion4(golfers),restriccion5(golfers), restos())
+    return lall(restriccion1(golfers),restriccion2(golfers),restriccion3(),restriccion4(golfers),restriccion5(golfers), restos(), nombres_unicos())
 
 result = run(0, golfers, restricciones(golfers))
 print(result)
